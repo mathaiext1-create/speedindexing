@@ -4,7 +4,7 @@ import { guard } from "@/lib/auth";
 const MAX_URLS = 1000;
 
 /** Fetch a sitemap (or sitemap index) and extract page URLs. */
-async function extractLocs(xml: string): string[] {
+async function extractLocs(xml: string): Promise<string[]> {
   const locs: string[] = [];
   const re = /<loc>\s*([^<\s]+)\s*<\/loc>/gi;
   let m: RegExpExecArray | null;

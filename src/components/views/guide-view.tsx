@@ -194,16 +194,17 @@ export function GuideView() {
           items={[
             "Push this project to a GitHub repo (or use the existing one).",
             "On vercel.com → Add New Project → import the repo.",
-            "The free SQLite file doesn't persist on serverless, so create a free Postgres at neon.tech (or Vercel Postgres).",
-            "In Vercel → Settings → Environment Variables set DATABASE_URL (Neon's POOLED connection string). Optionally set APP_SECRET (any long random string) to harden sign-in sessions.",
+            "Create a free database at supabase.com → New project → pick any name → save the database password it shows you.",
+            "In Supabase click 'Connect' (top of the project) → open the 'Transaction pooler' tab → copy the URI → replace [YOUR-PASSWORD] with the password you saved.",
+            "In Vercel → Settings → Environment Variables set DATABASE_URL to that string. Optionally set APP_SECRET (any long random string) to harden sign-in sessions.",
             "Deploy — the Prisma provider and database tables are set up automatically on the first build/visit. Nothing to run by hand.",
             "Your tool is now live on your own Vercel domain — visitors create their own accounts (sign up with email + password), and every account sees only its own engines, keys and history.",
           ]}
         />
         <p className="text-xs pt-2">
           The repo auto-detects the database: SQLite locally, PostgreSQL on
-          Vercel. Tables are created on first use — no migration commands
-          needed.
+          Vercel (Supabase, Neon or any Postgres). Tables are created on first
+          use — no migration commands needed.
         </p>
       </GuideItem>
 
