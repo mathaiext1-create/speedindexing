@@ -29,6 +29,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
+import { GscFixCard } from "@/components/gsc-fix-card";
 import { api, type IndexNowKeyDto, type ServiceAccountDto } from "@/lib/types";
 
 type BingInfo = {
@@ -158,6 +159,7 @@ function GoogleSection() {
   }
 
   const activeCount = accounts.filter((a) => a.isActive).length;
+  const activeAccounts = accounts.filter((a) => a.isActive);
 
   return (
     <Card>
@@ -171,6 +173,12 @@ function GoogleSection() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {activeAccounts.length > 0 && (
+          <GscFixCard
+            emails={activeAccounts.map((a) => a.clientEmail)}
+            compact
+          />
+        )}
         <Collapsible open={open} onOpenChange={setOpen}>
           <CollapsibleTrigger asChild>
             <Button variant="secondary" size="sm">

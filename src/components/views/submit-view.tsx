@@ -29,6 +29,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { EngineChip, PipelineStatusChip } from "@/components/engine-chips";
 import {
+  GscFixCard,
+  extractServiceEmails,
+  isGscPermissionError,
+} from "@/components/gsc-fix-card";
+import {
   api,
   type StatsDto,
   type SubmissionDto,
@@ -71,6 +76,7 @@ export function SubmitView({
   });
   const [stats, setStats] = useState<StatsDto | null>(null);
   const [recent, setRecent] = useState<SubmissionDto[]>([]);
+  const [lastSubmitted, setLastSubmitted] = useState<string>("");
 
   const refresh = useCallback(async () => {
     try {
@@ -147,11 +153,7 @@ export function SubmitView({
     }
   }
 
-  async function submit() {
-    if (urlCount === 0) {
-      toast({ title: "Paste at least one URL", variant: "destructive" });
-      return;
-    }
+  async function doSubmit(raw: string) {
     setSubmitting(true);
     setSummary(null);
     try {
@@ -159,14 +161,13 @@ export function SubmitView({
         "/api/submit",
         {
           method: "POST",
-          body: JSON.stringify({ urls: urlText, engines }),
+          body: JSON.stringify({ urls: raw, engines }),
         }
       );
       setSummary(s);
       toast({
         title: `Submitted ${s.total} URL${s.total > 1 ? "s" : ""} — watch the results below`,
       });
-      setUrlText("");
       refresh();
     } catch (e) {
       toast({
@@ -177,6 +178,17 @@ export function SubmitView({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function submit() {
+    if (urlCount === 0) {
+      toast({ title: "Paste at least one URL", variant: "destructive" });
+      return;
+    }
+    setLastSubmitted(urlText);
+    const raw = urlText;
+    await doSubmit(raw);
+    setUrlText("");
   }
 
   async function retry(id: string) {
@@ -423,6 +435,15 @@ export function SubmitView({
                   ))}
                 </ul>
               )}
+              {summary.engines.google &&
+                summary.engines.google.failed > 0 &&
+                isGscPermissionError(summary.sampleErrors) && (
+                  <GscFixCard
+                    emails={extractServiceEmails(summary.sampleErrors)}
+                    onRetry={() => lastSubmitted && doSubmit(lastSubmitted)}
+                    compact
+                  />
+                )}
             </div>
           )}
         </CardContent>

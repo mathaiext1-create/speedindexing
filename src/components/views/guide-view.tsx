@@ -122,11 +122,30 @@ export function GuideView() {
             "In APIs & Services → Library, search and enable 'Web Search Indexing API'.",
             "Go to IAM & Admin → Service Accounts → Create service account (no roles needed).",
             "Open the account → Keys → Add key → Create new key → JSON. Download the file.",
-            "Go to search.google.com/search-console → Settings → Users and permissions → Add user.",
-            "Paste the service-account email (ends with @*.iam.gserviceaccount.com) and give it Owner permission — this delegation is what unlocks the API.",
-            "Come back to the Engines tab, click 'Add service account' and paste the whole JSON file.",
+            "Engines tab → 'Add service account' → paste the whole JSON file.",
+            "LAST STEP — permission: click 'Connect Google — fix all sites' on the Engines tab and we add the permission automatically. Manual alternative: Search Console → Settings → Users and permissions → Add user → paste the robot email → role 'Owner'.",
           ]}
         />
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs space-y-2 mt-1">
+          <p className="font-medium text-amber-300">
+            Why does Google need permission when competitors never ask?
+          </p>
+          <p>
+            They DO ask — it&apos;s just hidden behind a &quot;Connect your
+            site&quot; or &quot;Verify&quot; button, and it does exactly the
+            same thing: Google only allows the owner of a website to request
+            faster crawling. That single rule is what stops anyone from
+            spam-indexing sites they don&apos;t own. Tools that need zero
+            setup don&apos;t use the Google API at all — they rely on slower,
+            less reliable crawler tricks.
+          </p>
+          <p>
+            Adding the robot email as Owner is a PRIVATE Search Console
+            setting. It gives nobody access to your site, changes nothing
+            public, and can be removed any time. It is one click per site,
+            once forever — or zero clicks with the Connect Google button.
+          </p>
+        </div>
         <p className="text-xs pt-2">
           Tip: each account gives 200 URL notifications/day. Add 2–3 accounts
           from different projects and the tool rotates them automatically when

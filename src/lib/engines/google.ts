@@ -110,9 +110,21 @@ export async function testServiceAccount(
   }
 }
 
-function friendlyGoogleError(status: number, msg: string): string {
-  if (status === 403 && /permission/i.test(msg))
-    return "Permission denied — add the service-account email as a DELEGATED owner in Google Search Console for this site";
+function friendlyGoogleError(
+  status: number,
+  msg: string,
+  clientEmail?: string
+): string {
+  if (status === 403 && /permission|denied|forbidden/i.test(msg)) {
+    const email = clientEmail ? ` Robot email: ${clientEmail}.` : "";
+    return (
+      "Permission needed — one-time setup: open Google Search Console, select this site, " +
+      "go to Settings → Users and permissions → Add user, and add the robot email below as Owner, " +
+      "then press Retry." +
+      email +
+      " This is a PRIVATE setting — it does NOT make your site public."
+    );
+  }
   if (status === 429 || /quota/i.test(msg))
     return "Daily quota exceeded for this service account (200/day default) — add more accounts to rotate";
   if (status === 401)
@@ -120,6 +132,56 @@ function friendlyGoogleError(status: number, msg: string): string {
   if (status === 400)
     return `Bad request — ${msg} (check the URL is valid and publicly reachable)`;
   return msg || `HTTP ${status}`;
+}
+
+/**
+ * Proactively check whether a service account has Search Console owner
+ * permission for a given site URL, WITHOUT consuming a submission.
+ * Uses the urlNotifications/metadata endpoint: 200/404 ⇒ access OK,
+ * 403 ⇒ owner delegation missing.
+ */
+export async function checkGooglePermission(
+  url: string,
+  account: Account
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const token = await getAccessToken(account);
+    const res = await fetch(
+      `https://indexing.googleapis.com/v3/urlNotifications/metadata?url=${encodeURIComponent(url)}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(15_000),
+      }
+    );
+    if (res.ok) {
+      return {
+        ok: true,
+        message: `Permission OK — ${account.label} can index this site`,
+      };
+    }
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: { message?: string };
+    };
+    const raw = data.error?.message || `HTTP ${res.status}`;
+    if (res.status === 404)
+      return {
+        ok: true,
+        message: `Permission OK — ${account.label} can index this site (URL not submitted before)`,
+      };
+    if (res.status === 403)
+      return {
+        ok: false,
+        message:
+          friendlyGoogleError(403, raw, account.clientEmail) +
+          ` [${account.label}]`,
+      };
+    return { ok: false, message: friendlyGoogleError(res.status, raw, account.clientEmail) };
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Network error",
+    };
+  }
 }
 
 /**
@@ -183,7 +245,7 @@ export async function submitToGoogle(
       }
 
       const raw = data.error?.message || `HTTP ${res.status}`;
-      lastError = friendlyGoogleError(res.status, raw);
+      lastError = friendlyGoogleError(res.status, raw, account.clientEmail);
       // Quota exhausted on this account → rotate to the next one
       if (res.status === 429 || (res.status === 403 && /quota/i.test(raw))) {
         continue;
