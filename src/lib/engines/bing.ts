@@ -9,12 +9,13 @@ const BING_ENDPOINT = "https://ssl.bing.com/webmaster/api.svc/json/SubmitUrlBatc
  * Batch limit: 1000 URLs per call, 10,000/day quota.
  */
 export async function submitToBing(
-  urls: string[]
+  urls: string[],
+  userId: string
 ): Promise<Map<string, EngineResult>> {
   const results = new Map<string, EngineResult>();
   if (urls.length === 0) return results;
 
-  const config = await db.bingConfig.findFirst();
+  const config = await db.bingConfig.findFirst({ where: { userId } });
   if (!config) {
     for (const url of urls) {
       results.set(url, {

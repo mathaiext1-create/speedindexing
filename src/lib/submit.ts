@@ -86,6 +86,7 @@ async function mapPool<T, R>(
 export async function runSubmission(
   raw: string,
   engines: EngineFlags,
+  userId: string,
   source: "manual" | "sitemap" | "retry" = "manual"
 ): Promise<{ summary: SubmitSummary; submissionIds: string[] }> {
   const { urls, duplicatesRemoved, errors } = parseUrls(raw);
@@ -105,6 +106,7 @@ export async function runSubmission(
           url,
           host: new URL(url).host,
           source,
+          userId,
         },
       })
     )
@@ -136,7 +138,7 @@ export async function runSubmission(
 
   // --- Google: per-URL calls with rotation, bounded concurrency ---
   if (engines.google) {
-    const googleResults = await mapPool(urls, 6, (url) => submitToGoogle(url));
+    const googleResults = await mapPool(urls, 6, (url) => submitToGoogle(url, userId));
     googleResults.forEach((result: EngineResult, idx: number) => {
       resultRows.push({
         submissionId: submissions[idx].id,
@@ -159,7 +161,7 @@ export async function runSubmission(
 
   // --- IndexNow: batched per host ---
   if (engines.indexnow) {
-    const indexNowResults = await submitToIndexNow(urls);
+    const indexNowResults = await submitToIndexNow(urls, userId);
     for (const [url, result] of indexNowResults) {
       const submission = submissions[urls.indexOf(url)];
       if (!submission) continue;
@@ -184,7 +186,7 @@ export async function runSubmission(
 
   // --- Bing Webmaster: batched per site ---
   if (engines.bing) {
-    const bingResults = await submitToBing(urls);
+    const bingResults = await submitToBing(urls, userId);
     for (const [url, result] of bingResults) {
       const submission = submissions[urls.indexOf(url)];
       if (!submission) continue;

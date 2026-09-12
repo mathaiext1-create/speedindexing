@@ -7,8 +7,8 @@ export const maxDuration = 60;
 
 /** Re-run a past submission — deletes old engine results and resubmits. */
 export async function POST(req: NextRequest) {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
+  const user = await guard();
+  if (user instanceof NextResponse) return user;
 
   const body = (await req.json().catch(() => ({}))) as {
     submissionId?: string;
@@ -18,8 +18,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "submissionId required" }, { status: 400 });
   }
 
-  const submission = await db.submission.findUnique({
-    where: { id: body.submissionId },
+  const submission = await db.submission.findFirst({
+    where: { id: body.submissionId, userId: user.id },
     include: { results: true },
   });
   if (!submission) {
@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
     const { summary } = await runSubmission(
       submission.url,
       engines,
+      user.id,
       "retry"
     );
     return NextResponse.json({ summary });

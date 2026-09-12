@@ -3,23 +3,26 @@ import { db } from "@/lib/db";
 import { guard } from "@/lib/auth";
 
 export async function GET() {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
+  const user = await guard();
+  if (user instanceof NextResponse) return user;
 
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
   const [total, today, groupByEngine, activeAccounts, keyCount, bingConfig] =
     await Promise.all([
-      db.submission.count(),
-      db.submission.count({ where: { createdAt: { gte: startOfDay } } }),
+      db.submission.count({ where: { userId: user.id } }),
+      db.submission.count({
+        where: { userId: user.id, createdAt: { gte: startOfDay } },
+      }),
       db.submissionResult.groupBy({
         by: ["engine", "status"],
+        where: { submission: { userId: user.id } },
         _count: { _all: true },
       }),
-      db.serviceAccount.count({ where: { isActive: true } }),
-      db.indexNowKey.count(),
-      db.bingConfig.findFirst(),
+      db.serviceAccount.count({ where: { isActive: true, userId: user.id } }),
+      db.indexNowKey.count({ where: { userId: user.id } }),
+      db.bingConfig.findFirst({ where: { userId: user.id } }),
     ]);
 
   const engines: Record<

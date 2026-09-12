@@ -53,7 +53,11 @@ const ENGINES = [
   },
 ];
 
-export function SubmitView({ onNavigate }: { onNavigate: () => void }) {
+export function SubmitView({
+  onNavigate,
+}: {
+  onNavigate: (view: "history" | "engines") => void;
+}) {
   const { toast } = useToast();
   const [urlText, setUrlText] = useState("");
   const [sitemapUrl, setSitemapUrl] = useState("");
@@ -255,6 +259,28 @@ export function SubmitView({ onNavigate }: { onNavigate: () => void }) {
         />
       </div>
 
+      {/* Setup required banner — Google has no service account yet */}
+      {pipeline && pipeline.googleAccounts === 0 && (
+        <button
+          onClick={() => onNavigate("engines")}
+          className="w-full text-left rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 flex items-start gap-3 hover:bg-amber-500/15 transition-colors"
+        >
+          <AlertCircle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+          <span className="text-sm">
+            <span className="font-medium text-amber-300">
+              Finish setup to make Google indexing work (2 minutes)
+            </span>
+            <span className="block text-muted-foreground mt-1">
+              Your URLs are saved, but Google skips them until you connect a
+              service account: create it in Google Cloud, then add its email as
+              a delegated owner in YOUR Search Console (private — your site
+              stays public exactly as it is now). Click here to open the
+              step-by-step guide in Engines.
+            </span>
+          </span>
+        </button>
+      )}
+
       {/* Submit card */}
       <Card>
         <CardHeader>
@@ -410,7 +436,7 @@ export function SubmitView({ onNavigate }: { onNavigate: () => void }) {
             <Button variant="ghost" size="sm" onClick={refresh}>
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button variant="secondary" size="sm" onClick={onNavigate}>
+            <Button variant="secondary" size="sm" onClick={() => onNavigate("history")}>
               View all
             </Button>
           </div>

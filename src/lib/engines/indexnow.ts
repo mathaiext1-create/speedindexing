@@ -33,12 +33,14 @@ function explainIndexNowStatus(status: number): string {
  * Returns a result row per input URL (same order).
  */
 export async function submitToIndexNow(
-  urls: string[]
+  urls: string[],
+  userId: string
 ): Promise<Map<string, EngineResult>> {
   const results = new Map<string, EngineResult>();
   if (urls.length === 0) return results;
 
   const keyRecord = await db.indexNowKey.findFirst({
+    where: { userId },
     orderBy: { createdAt: "desc" },
   });
   if (!keyRecord) {

@@ -6,8 +6,8 @@ import { runSubmission, type EngineFlags } from "@/lib/submit";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
+  const user = await guard();
+  if (user instanceof NextResponse) return user;
 
   const body = (await req.json().catch(() => ({}))) as {
     urls?: string;
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { summary } = await runSubmission(body.urls, engines, "manual");
+    const { summary } = await runSubmission(body.urls, engines, user.id, "manual");
     return NextResponse.json({ summary });
   } catch (e) {
     return NextResponse.json(

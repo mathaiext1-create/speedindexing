@@ -16,8 +16,8 @@ async function extractLocs(xml: string): string[] {
 }
 
 export async function POST(req: NextRequest) {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
+  const user = await guard();
+  if (user instanceof NextResponse) return user;
 
   const body = (await req.json().catch(() => ({}))) as { sitemapUrl?: string };
   const sitemapUrl = body.sitemapUrl?.trim();

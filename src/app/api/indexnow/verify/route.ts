@@ -5,8 +5,8 @@ import { verifyKeyFile } from "@/lib/engines/indexnow";
 
 /** Check that https://host/{key}.txt is live with the right content. */
 export async function POST(req: NextRequest) {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
+  const user = await guard();
+  if (user instanceof NextResponse) return user;
 
   const body = (await req.json().catch(() => ({}))) as {
     host?: string;
@@ -17,8 +17,13 @@ export async function POST(req: NextRequest) {
   }
 
   const keyRecord = body.keyId
-    ? await db.indexNowKey.findUnique({ where: { id: body.keyId } })
-    : await db.indexNowKey.findFirst({ orderBy: { createdAt: "desc" } });
+    ? await db.indexNowKey.findFirst({
+        where: { id: body.keyId, userId: user.id },
+      })
+    : await db.indexNowKey.findFirst({
+        where: { userId: user.id },
+        orderBy: { createdAt: "desc" },
+      });
   if (!keyRecord) {
     return NextResponse.json(
       { error: "No IndexNow key generated yet" },

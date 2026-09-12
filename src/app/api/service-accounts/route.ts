@@ -4,9 +4,11 @@ import { guard } from "@/lib/auth";
 import { testServiceAccount } from "@/lib/engines/google";
 
 export async function GET() {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
+  const user = await guard();
+  if (user instanceof NextResponse) return user;
+
   const accounts = await db.serviceAccount.findMany({
+    where: { userId: user.id },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -23,8 +25,8 @@ export async function GET() {
 
 /** Add a service account by pasting the raw JSON key file. */
 export async function POST(req: NextRequest) {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
+  const user = await guard();
+  if (user instanceof NextResponse) return user;
 
   const body = (await req.json().catch(() => ({}))) as {
     json?: string;
@@ -60,8 +62,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const existing = await db.serviceAccount.findUnique({
-    where: { clientEmail: parsed.client_email },
+  const existing = await db.serviceAccount.findFirst({
+    where: { userId: user.id, clientEmail: parsed.client_email },
   });
   if (existing) {
     return NextResponse.json(
@@ -70,9 +72,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const count = await db.serviceAccount.count();
+  const count = await db.serviceAccount.count({ where: { userId: user.id } });
   const account = await db.serviceAccount.create({
     data: {
+      userId: user.id,
       label: body.label?.trim() || `SA-${count + 1}`,
       clientEmail: parsed.client_email,
       privateKey: parsed.private_key,

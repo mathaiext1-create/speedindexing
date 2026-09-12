@@ -62,6 +62,11 @@ export type IndexNowKeyDto = {
   createdAt: string;
 };
 
+export type UserDto = {
+  id: string;
+  email: string;
+};
+
 export async function api<T>(
   path: string,
   options?: RequestInit

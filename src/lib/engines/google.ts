@@ -126,9 +126,12 @@ function friendlyGoogleError(status: number, msg: string): string {
  * Submit one URL to the Google Indexing API.
  * Rotates through active service accounts; on quota errors it tries the next.
  */
-export async function submitToGoogle(url: string): Promise<EngineResult> {
+export async function submitToGoogle(
+  url: string,
+  userId: string
+): Promise<EngineResult> {
   const accounts = await db.serviceAccount.findMany({
-    where: { isActive: true },
+    where: { isActive: true, userId },
     orderBy: { lastUsedAt: "asc" },
   });
 

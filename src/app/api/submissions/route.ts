@@ -3,8 +3,8 @@ import { db } from "@/lib/db";
 import { guard } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
+  const user = await guard();
+  if (user instanceof NextResponse) return user;
 
   const sp = req.nextUrl.searchParams;
   const page = Math.max(1, Number(sp.get("page") ?? "1"));
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const engine = sp.get("engine") ?? "";
   const status = sp.get("status") ?? "";
 
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { userId: user.id };
   if (q) where.url = { contains: q };
 
   if (engine || status) {
@@ -37,10 +37,14 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ total, page, limit, submissions });
 }
 
+/** Clear ALL of the current user's history. */
 export async function DELETE() {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
-  await db.submissionResult.deleteMany({});
-  await db.submission.deleteMany({});
+  const user = await guard();
+  if (user instanceof NextResponse) return user;
+
+  await db.submissionResult.deleteMany({
+    where: { submission: { userId: user.id } },
+  });
+  await db.submission.deleteMany({ where: { userId: user.id } });
   return NextResponse.json({ ok: true });
 }

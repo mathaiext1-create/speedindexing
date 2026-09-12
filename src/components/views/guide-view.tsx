@@ -176,9 +176,9 @@ export function GuideView() {
             "Push this project to a GitHub repo (or use the existing one).",
             "On vercel.com → Add New Project → import the repo.",
             "The free SQLite file doesn't persist on serverless, so create a free Postgres at neon.tech (or Vercel Postgres).",
-            "In Vercel → Settings → Environment Variables set APP_PASSWORD (your login) and DATABASE_URL (Neon's POOLED connection string).",
+            "In Vercel → Settings → Environment Variables set DATABASE_URL (Neon's POOLED connection string). Optionally set APP_SECRET (any long random string) to harden sign-in sessions.",
             "Deploy — the Prisma provider and database tables are set up automatically on the first build/visit. Nothing to run by hand.",
-            "Your tool is now live on your own Vercel domain — protected by the password you set.",
+            "Your tool is now live on your own Vercel domain — visitors create their own accounts (sign up with email + password), and every account sees only its own engines, keys and history.",
           ]}
         />
         <p className="text-xs pt-2">

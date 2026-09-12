@@ -15,7 +15,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { api } from "@/lib/types";
+import { api, type UserDto } from "@/lib/types";
 import { SubmitView } from "@/components/views/submit-view";
 import { HistoryView } from "@/components/views/history-view";
 import { EnginesView } from "@/components/views/engines-view";
@@ -30,24 +30,26 @@ const NAV: { id: View; label: string; icon: React.ReactNode }[] = [
   { id: "guide", label: "Guide", icon: <BookOpen className="h-4 w-4" /> },
 ];
 
-function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
+function AuthScreen({ onSuccess }: { onSuccess: (user: UserDto) => void }) {
   const { toast } = useToast();
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function login() {
-    if (!password) return;
+  async function submit() {
+    if (!email || !password) return;
     setLoading(true);
     try {
-      await api("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ password }),
-      });
-      onSuccess();
-    } catch {
+      const data = await api<{ ok: true; user: UserDto }>(
+        mode === "login" ? "/api/auth/login" : "/api/auth/register",
+        { method: "POST", body: JSON.stringify({ email, password }) }
+      );
+      onSuccess(data.user);
+    } catch (e) {
       toast({
-        title: "Wrong password",
-        description: "This is your personal indexing tool — set the password in the APP_PASSWORD environment variable.",
+        title: mode === "login" ? "Sign in failed" : "Could not create account",
+        description: e instanceof Error ? e.message : undefined,
         variant: "destructive",
       });
     } finally {
@@ -66,31 +68,54 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
             <div>
               <h1 className="text-xl font-bold">SpeedIndexing</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Your private instant URL indexing tool
+                {mode === "login"
+                  ? "Sign in to your account"
+                  : "Create your free account"}
               </p>
             </div>
           </div>
           <div className="space-y-2">
             <Input
-              type="password"
-              placeholder="Access password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && login()}
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && password && submit()}
               autoFocus
             />
-            <Button onClick={login} disabled={loading || !password} className="w-full">
+            <Input
+              type="password"
+              placeholder={mode === "register" ? "Password (min 6 characters)" : "Password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+            />
+            <Button onClick={submit} disabled={loading || !email || !password} className="w-full">
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
+              ) : mode === "login" ? (
+                "Sign in"
               ) : (
-                "Unlock tool"
+                "Create account"
               )}
             </Button>
           </div>
-          <p className="text-xs text-center text-muted-foreground">
-            Default password: <code className="text-emerald-400">speedindex</code>{" "}
-            — change it via the APP_PASSWORD env var
-          </p>
+          <button
+            onClick={() => setMode(mode === "login" ? "register" : "login")}
+            className="w-full text-xs text-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {mode === "login" ? (
+              <>
+                No account yet?{" "}
+                <span className="text-emerald-400 font-medium">Create one free</span>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <span className="text-emerald-400 font-medium">Sign in</span>
+              </>
+            )}
+          </button>
         </CardContent>
       </Card>
     </div>
@@ -98,17 +123,17 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
 }
 
 export default function Home() {
-  const [authed, setAuthed] = useState<boolean | null>(null);
+  const [user, setUser] = useState<UserDto | null | undefined>(undefined);
   const [view, setView] = useState<View>("submit");
 
   useEffect(() => {
     let cancelled = false;
-    api<{ authenticated: boolean }>("/api/auth/session")
+    api<{ authenticated: boolean; user: UserDto | null }>("/api/auth/session")
       .then((d) => {
-        if (!cancelled) setAuthed(d.authenticated);
+        if (!cancelled) setUser(d.authenticated && d.user ? d.user : null);
       })
       .catch(() => {
-        if (!cancelled) setAuthed(false);
+        if (!cancelled) setUser(null);
       });
     return () => {
       cancelled = true;
@@ -117,10 +142,10 @@ export default function Home() {
 
   async function logout() {
     await api("/api/auth/logout", { method: "POST" });
-    setAuthed(false);
+    setUser(null);
   }
 
-  if (authed === null) {
+  if (user === undefined) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -128,8 +153,8 @@ export default function Home() {
     );
   }
 
-  if (!authed) {
-    return <LoginScreen onSuccess={() => setAuthed(true)} />;
+  if (!user) {
+    return <AuthScreen onSuccess={(u) => setUser(u)} />;
   }
 
   return (
@@ -165,7 +190,10 @@ export default function Home() {
             ))}
           </nav>
 
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-muted-foreground hidden sm:block max-w-40 truncate">
+              {user.email}
+            </span>
             <Button variant="ghost" size="icon" onClick={logout} title="Log out">
               <LogOut className="h-4 w-4" />
             </Button>
@@ -197,7 +225,9 @@ export default function Home() {
 
       {/* Content */}
       <main className="flex-1 mx-auto w-full max-w-5xl px-4 py-6">
-        {view === "submit" && <SubmitView onNavigate={() => setView("history")} />}
+        {view === "submit" && (
+          <SubmitView onNavigate={(v) => setView(v as View)} />
+        )}
         {view === "history" && <HistoryView />}
         {view === "engines" && <EnginesView />}
         {view === "guide" && <GuideView />}
@@ -206,8 +236,8 @@ export default function Home() {
       {/* Sticky footer */}
       <footer className="mt-auto border-t py-4">
         <p className="text-center text-xs text-muted-foreground">
-          SpeedIndexing · your personal instant indexing tool · Google Indexing
-          API + IndexNow + Bing
+          SpeedIndexing · instant indexing SaaS · Google Indexing API +
+          IndexNow + Bing
         </p>
       </footer>
     </div>

@@ -220,14 +220,24 @@ function GoogleSection() {
                   "Add the service-account email (…@…iam.gserviceaccount.com) as DELEGATED owner",
                 ]}
               />
+              <p className="text-[11px] leading-relaxed text-muted-foreground border-t mt-3 pt-2 flex gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                <span>
+                  <span className="text-foreground font-medium">100% private & safe:</span>{" "}
+                  adding the service account to Search Console does NOT make your
+                  site public or give anyone access. It only lets YOUR private
+                  key ask Google to crawl faster. Your GSC property stays
+                  private; only you and this tool can use it.
+                </span>
+              </p>
             </div>
           </CollapsibleContent>
         </Collapsible>
 
         {accounts.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No service accounts yet — without one, Google submissions are
-            skipped.
+            No service accounts yet — Google submissions are skipped until you
+            add one above (takes ~2 minutes, free).
           </p>
         ) : (
           <div className="space-y-2 max-h-96 overflow-y-auto">

@@ -4,9 +4,10 @@ import { guard } from "@/lib/auth";
 import { testBingKey } from "@/lib/engines/bing";
 
 export async function GET() {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
-  const config = await db.bingConfig.findFirst();
+  const user = await guard();
+  if (user instanceof NextResponse) return user;
+
+  const config = await db.bingConfig.findFirst({ where: { userId: user.id } });
   return NextResponse.json({
     configured: !!config,
     apiKeyMasked: config
@@ -18,27 +19,35 @@ export async function GET() {
 
 /** Save Bing Webmaster API key. */
 export async function PUT(req: NextRequest) {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
+  const user = await guard();
+  if (user instanceof NextResponse) return user;
+
   const body = (await req.json().catch(() => ({}))) as { apiKey?: string };
   const apiKey = body.apiKey?.trim();
   if (!apiKey) {
     return NextResponse.json({ error: "apiKey required" }, { status: 400 });
   }
-  await db.bingConfig.upsert({
-    where: { id: "bing" },
-    update: { apiKey },
-    create: { id: "bing", apiKey },
+
+  const existing = await db.bingConfig.findFirst({
+    where: { userId: user.id },
   });
+  if (existing) {
+    await db.bingConfig.update({ where: { id: existing.id }, data: { apiKey } });
+  } else {
+    await db.bingConfig.create({ data: { userId: user.id, apiKey } });
+  }
   return NextResponse.json({ ok: true });
 }
 
 /** Test the saved (or provided) Bing API key. */
 export async function POST(req: NextRequest) {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
+  const user = await guard();
+  if (user instanceof NextResponse) return user;
+
   const body = (await req.json().catch(() => ({}))) as { apiKey?: string };
-  const config = await db.bingConfig.findFirst();
+  const config = await db.bingConfig.findFirst({
+    where: { userId: user.id },
+  });
   const apiKey = body.apiKey?.trim() || config?.apiKey;
   if (!apiKey) {
     return NextResponse.json(
@@ -51,8 +60,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE() {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
-  await db.bingConfig.deleteMany({});
+  const user = await guard();
+  if (user instanceof NextResponse) return user;
+
+  await db.bingConfig.deleteMany({ where: { userId: user.id } });
   return NextResponse.json({ ok: true });
 }
