@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { ensureSchema } from "@/lib/bootstrap";
 
 const COOKIE_NAME = "si_session";
 const SESSION_DAYS = 30;
@@ -50,8 +51,12 @@ export async function isAuthenticated(): Promise<boolean> {
 
 /** Returns a 401 response if unauthenticated, otherwise null. */
 export async function guard(): Promise<NextResponse | null> {
-  if (await isAuthenticated()) return null;
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // Fresh deployments (e.g. Vercel + Neon) get their tables on first request
+  await ensureSchema();
+  return null;
 }
 
 export const SESSION_COOKIE = COOKIE_NAME;

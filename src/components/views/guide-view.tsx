@@ -173,18 +173,18 @@ export function GuideView() {
       >
         <Steps
           items={[
-            "Push this project to a GitHub repo.",
+            "Push this project to a GitHub repo (or use the existing one).",
             "On vercel.com → Add New Project → import the repo.",
             "The free SQLite file doesn't persist on serverless, so create a free Postgres at neon.tech (or Vercel Postgres).",
-            "In prisma/schema.prisma change provider 'sqlite' to 'postgresql'.",
-            "In Vercel → Settings → Environment Variables set APP_PASSWORD (your login) and DATABASE_URL (the Postgres connection string).",
-            "Run 'npx prisma db push' once locally with the same DATABASE_URL to create the tables, then Deploy.",
+            "In Vercel → Settings → Environment Variables set APP_PASSWORD (your login) and DATABASE_URL (Neon's POOLED connection string).",
+            "Deploy — the Prisma provider and database tables are set up automatically on the first build/visit. Nothing to run by hand.",
             "Your tool is now live on your own Vercel domain — protected by the password you set.",
           ]}
         />
         <p className="text-xs pt-2">
-          No Postgres? Hosting on Railway, Render or any VPS keeps SQLite and
-          needs no changes at all.
+          The repo auto-detects the database: SQLite locally, PostgreSQL on
+          Vercel. Tables are created on first use — no migration commands
+          needed.
         </p>
       </GuideItem>
 

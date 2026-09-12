@@ -2,9 +2,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// NOTE: For Vercel deployment, switch provider to "postgresql" and point
-// DATABASE_URL to a hosted Postgres (Neon / Vercel Postgres free tier).
-// SQLite is used here so the tool runs standalone with zero setup.
+// The provider below is auto-switched by scripts/prisma-provider.mjs:
+//   DATABASE_URL=file:...        -> sqlite   (local dev, zero setup)
+//   DATABASE_URL=postgres://...  -> postgresql (Vercel + Neon free tier)
+// Tables are created automatically on first request (src/lib/bootstrap.ts).
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
