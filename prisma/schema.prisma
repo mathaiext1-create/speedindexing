@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// NOTE: For Vercel deployment, switch provider to "postgresql" and point
+// DATABASE_URL to a hosted Postgres (Neon / Vercel Postgres free tier).
+// SQLite is used here so the tool runs standalone with zero setup.
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Google Indexing API service accounts (rotate to multiply the 200/day quota)
+model ServiceAccount {
+  id          String    @id @default(cuid())
+  label       String
+  clientEmail String    @unique
+  privateKey  String
+  projectId   String?
+  isActive    Boolean   @default(true)
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+// IndexNow keys — the key file must be hosted on each target domain
+model IndexNowKey {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String?
+  createdAt DateTime @default(now())
+}
+
+// Bing Webmaster Tools API key (singleton)
+model BingConfig {
+  id        String   @id @default("bing")
+  apiKey    String
+  updatedAt DateTime @updatedAt
+}
+
+// One row per submitted URL
+model Submission {
+  id        String             @id @default(cuid())
+  url       String
+  host      String
+  source    String             @default("manual") // manual | sitemap | retry
+  createdAt DateTime           @default(now())
+  results   SubmissionResult[]
+
+  @@index([createdAt])
+  @@index([host])
+}
+
+// One row per engine attempt for a submission
+model SubmissionResult {
+  id           String     @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  engine       String // google | indexnow | bing
+  status       String // success | failed | skipped
+  httpStatus   Int?
+  message      String?
+  accountLabel String?
+  createdAt    DateTime   @default(now())
+
+  @@index([submissionId])
+  @@index([engine, status])
+}
