@@ -63,5 +63,6 @@ server.log
 /Caddyfile
 /examples/
 /tests/
+/mini-services
 /agent-ctx
 .zscripts
