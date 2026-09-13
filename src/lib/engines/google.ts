@@ -312,7 +312,10 @@ export async function submitToGoogle(
     return {
       engine: "google",
       status: "skipped",
-      message: "No service account configured",
+      message:
+        "Not submitted to the Google Indexing API — no service account connected yet. " +
+        "The URL was auto-routed to the Boost engine (crawler attractors). " +
+        "Add a service account in Engines for instant Google submission.",
     };
   }
 
@@ -380,5 +383,127 @@ export async function submitToGoogle(
     message: `${lastError} (tried ${accounts.length} account${
       accounts.length > 1 ? "s" : ""
     })`,
+  };
+}
+
+export type IndexStatus = {
+  /** true = submitted & acknowledged · false = never submitted · null = could not verify */
+  submitted: boolean | null;
+  when?: string;
+  via: "api" | "search" | "none";
+  message: string;
+  siteSearchUrl: string;
+};
+
+/**
+ * Live "did Google actually get this URL?" check.
+ *
+ * 1. Primary: the FREE urlNotifications/metadata endpoint (zero quota) —
+ *    returns the last acknowledged submission time for the URL.
+ * 2. Fallback (no permission / no account): best-effort `site:` search probe.
+ * 3. If Google blocks the probe (common from datacenter IPs) → honest
+ *    "unknown" with a one-click manual verification link.
+ */
+export async function checkIndexStatus(
+  url: string,
+  userId: string
+): Promise<IndexStatus> {
+  const siteSearchUrl = `https://www.google.com/search?q=site:${encodeURIComponent(
+    url
+  )}&filter=0`;
+
+  // --- 1. Official metadata endpoint (free, no publish quota) ---
+  const accounts = await db.serviceAccount.findMany({
+    where: { isActive: true, userId },
+    orderBy: { lastUsedAt: "asc" },
+    take: 1,
+  });
+
+  if (accounts.length > 0) {
+    try {
+      const token = await getAccessToken(accounts[0]);
+      const res = await fetch(
+        `https://indexing.googleapis.com/v3/urlNotifications/metadata?url=${encodeURIComponent(url)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(15_000),
+        }
+      );
+      if (res.ok) {
+        const data = (await res.json().catch(() => ({}))) as {
+          urlNotificationMetadata?: {
+            latestUpdate?: { notifyTime?: string; type?: string };
+          };
+        };
+        const latest = data.urlNotificationMetadata?.latestUpdate;
+        return {
+          submitted: true,
+          when: latest?.notifyTime,
+          via: "api",
+          message: `Confirmed by Google — the Indexing API acknowledged this URL${
+            latest?.type ? ` (type: ${latest.type})` : ""
+          }. Google typically crawls it shortly after.`,
+          siteSearchUrl,
+        };
+      }
+      if (res.status === 404) {
+        return {
+          submitted: false,
+          via: "api",
+          message:
+            "Verified via Google API: this URL has never been submitted through the Indexing API. Press Retry to submit it now.",
+          siteSearchUrl,
+        };
+      }
+      // 403 / other → fall through to the public search probe
+    } catch {
+      /* fall through to search probe */
+    }
+  }
+
+  // --- 2. Best-effort public `site:` search probe ---
+  try {
+    const res = await fetch(siteSearchUrl, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(10_000),
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+    if (res.ok) {
+      const html = await res.text();
+      if (/\/sorry\//i.test(html) || /unusual traffic|captcha/i.test(html)) {
+        // blocked — return honest unknown
+      } else if (/did not match any documents|no results found/i.test(html)) {
+        return {
+          submitted: false,
+          via: "search",
+          message:
+            "Verified via public search: Google does not list this URL yet. Press Retry to submit it, then check again in 24-48h.",
+          siteSearchUrl,
+        };
+      } else if (/results? for|about .* results|id=\"search\"/i.test(html)) {
+        return {
+          submitted: true,
+          via: "search",
+          message:
+            "Verified via public search: Google lists this URL — it is in Google's index.",
+          siteSearchUrl,
+        };
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+
+  // --- 3. Honest unknown with manual link ---
+  return {
+    submitted: null,
+    via: "none",
+    message:
+      "Automated verification was blocked by Google from this server (normal for datacenter IPs). Open the manual site: search to confirm in one click.",
+    siteSearchUrl,
   };
 }

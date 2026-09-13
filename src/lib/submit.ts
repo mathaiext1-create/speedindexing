@@ -182,11 +182,20 @@ export async function runSubmission(
 
       // Boost lane — site has no Owner permission (cached from the free
       // probe). Skip the publish API entirely; the Boost engine below
-      // handles it. No google row, no red chip, no quota burn.
+      // handles it. We still write a google row so the history ALWAYS
+      // shows whether the URL was submitted to Google or not.
       if (lane === "boost") {
         noAccess.set(url, "permission");
+        summary.engines.google.skipped++;
         summary.boosted++;
         if (!summary.boostedHosts.includes(host)) summary.boostedHosts.push(host);
+        resultRows.push({
+          submissionId: submissions[idx].id,
+          engine: "google",
+          status: "skipped",
+          message:
+            "Not submitted to the Google Indexing API — this site has no Owner permission yet, so instant submission is locked. The URL was auto-routed to the Boost engine. Press Check to verify its live Google status.",
+        });
         return;
       }
 

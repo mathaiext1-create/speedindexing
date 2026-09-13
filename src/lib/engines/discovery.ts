@@ -46,6 +46,8 @@ async function fire(url: string, label: string): Promise<FireOutcome> {
  *     public record of the URL
  *  3. Google PageSpeed — anonymous run makes Google infrastructure fetch
  *     and analyse the page (a crawl signal, not an index request)
+ *  4. Bing sitemap ping — notifies Bing's crawler to refresh the site's
+ *     sitemap and pick up new URLs quickly (Bing powers DuckDuckGo etc.)
  */
 export async function runDiscovery(url: string): Promise<EngineResult> {
   const host = new URL(url).host;
@@ -65,6 +67,12 @@ export async function runDiscovery(url: string): Promise<EngineResult> {
         url
       )}&strategy=mobile`,
       "google-page-fetch"
+    ),
+    fire(
+      `https://www.bing.com/ping?sitemap=${encodeURIComponent(
+        `https://${host}/sitemap.xml`
+      )}`,
+      "bing-sitemap-ping"
     ),
   ]);
 

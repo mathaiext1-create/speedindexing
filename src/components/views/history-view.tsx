@@ -7,6 +7,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  ShieldCheck,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,14 @@ import { useToast } from "@/hooks/use-toast";
 import { EngineChip } from "@/components/engine-chips";
 import { api, type SubmissionDto } from "@/lib/types";
 
+type IndexStatusDto = {
+  submitted: boolean | null;
+  when?: string;
+  via: "api" | "search" | "none";
+  message: string;
+  siteSearchUrl: string;
+};
+
 export function HistoryView() {
   const { toast } = useToast();
   const [submissions, setSubmissions] = useState<SubmissionDto[]>([]);
@@ -52,6 +61,8 @@ export function HistoryView() {
   const [status, setStatus] = useState("all");
   const [loading, setLoading] = useState(true);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [checks, setChecks] = useState<Record<string, IndexStatusDto>>({});
   const limit = 20;
 
   const load = useCallback(async () => {
@@ -97,6 +108,25 @@ export function HistoryView() {
       });
     } finally {
       setRetryingId(null);
+    }
+  }
+
+  async function checkStatus(s: SubmissionDto) {
+    setCheckingId(s.id);
+    try {
+      const status = await api<IndexStatusDto>("/api/google/index-status", {
+        method: "POST",
+        body: JSON.stringify({ url: s.url }),
+      });
+      setChecks((prev) => ({ ...prev, [s.id]: status }));
+    } catch (e) {
+      toast({
+        title: "Status check failed",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setCheckingId(null);
     }
   }
 
@@ -223,7 +253,9 @@ export function HistoryView() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {submissions.map((s) => (
+                {submissions.map((s) => {
+                  const check = checks[s.id];
+                  return (
                   <TableRow key={s.id}>
                     <TableCell className="max-w-0">
                       <p className="truncate text-sm" title={s.url}>
@@ -237,6 +269,34 @@ export function HistoryView() {
                         </a>
                       </p>
                       <p className="text-xs text-muted-foreground">{s.host}</p>
+                      {check && (
+                        <p
+                          className={
+                            "mt-1 inline-flex max-w-full items-center gap-1 truncate rounded border px-1.5 py-0.5 text-[11px] " +
+                            (check.submitted === true
+                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                              : check.submitted === false
+                                ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                                : "border-zinc-500/30 bg-zinc-500/10 text-zinc-400")
+                          }
+                          title={check.message}
+                        >
+                          {check.submitted === true
+                            ? `In Google — verified${check.when ? ` · ${new Date(check.when).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""}`
+                            : check.submitted === false
+                              ? "Not submitted to Google yet — press Retry"
+                              : "Could not auto-verify"}
+                          <a
+                            href={check.siteSearchUrl}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="ml-1 underline underline-offset-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            verify
+                          </a>
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
@@ -258,22 +318,38 @@ export function HistoryView() {
                       })}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => retry(s.id)}
-                        disabled={retryingId === s.id}
-                        title="Resubmit this URL"
-                      >
-                        {retryingId === s.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-4 w-4" />
-                        )}
-                      </Button>
+                      <div className="flex items-center">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => checkStatus(s)}
+                          disabled={checkingId === s.id}
+                          title="Check live Google submission status (free, no quota)"
+                        >
+                          {checkingId === s.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
+                          ) : (
+                            <ShieldCheck className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => retry(s.id)}
+                          disabled={retryingId === s.id}
+                          title="Resubmit this URL"
+                        >
+                          {retryingId === s.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

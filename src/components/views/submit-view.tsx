@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Download,
@@ -73,6 +73,7 @@ export function SubmitView({
   const [stats, setStats] = useState<StatsDto | null>(null);
   const [recent, setRecent] = useState<SubmissionDto[]>([]);
   const [lastSubmitted, setLastSubmitted] = useState<string>("");
+  const sweepFired = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -92,6 +93,26 @@ export function SubmitView({
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Self-repeating Boost — every dashboard visit fires a server-throttled
+  // sweep (max once per 6h) that re-submits boost-lane URLs to the crawler
+  // network so they keep getting fresh signals until Google indexes them.
+  useEffect(() => {
+    if (sweepFired.current) return;
+    sweepFired.current = true;
+    api<{ reboosted: number }>("/api/boost/sweep", { method: "POST" })
+      .then((r) => {
+        if (r.reboosted > 0) {
+          toast({
+            title: `Boost re-fired for ${r.reboosted} URL${r.reboosted > 1 ? "s" : ""}`,
+            description:
+              "Automatic daily re-boost keeps pushing your URLs to crawlers until Google indexes them",
+          });
+          refresh();
+        }
+      })
+      .catch(() => {});
+  }, [refresh, toast]);
 
   const urlCount = useMemo(
     () =>
