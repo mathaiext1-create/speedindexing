@@ -1,11 +1,19 @@
 // One-shot migration: Neon -> Supabase
+// ⚠️ Wipes Supabase tables then copies fresh from Neon (full mirror).
+// Run ONLY while production still points at Neon (before the Vercel flip).
 // 1) create schema (same DDL as src/lib/bootstrap.ts ensureSchema)
-// 2) copy all rows preserving IDs
+// 2) wipe destination rows, copy all rows preserving IDs
 // 3) verify counts on both sides
 import { SQL } from "bun";
 
 const src = new SQL(process.env.PROD_DB);
 const dst = new SQL(process.env.SUPA_DB);
+
+console.log("0) Wiping Supabase tables (fresh mirror)...");
+for (const t of ["SubmissionResult", "Submission", "BingConfig", "IndexNowKey", "ServiceAccount", "User"]) {
+  await dst.unsafe(`DELETE FROM "${t}"`);
+}
+console.log("   done");
 
 const TS = "TIMESTAMP(3)";
 
