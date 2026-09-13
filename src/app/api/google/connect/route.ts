@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { guard } from "@/lib/auth";
+import { clearHostLane } from "@/lib/engines/google";
 
 const SV_API = "https://www.googleapis.com/siteVerification/v1/webResource";
 
@@ -134,6 +135,27 @@ export async function POST(req: NextRequest) {
   );
 
   const totalAdded = sites.reduce((n, s) => n + s.added.length, 0);
+
+  // Self-heal: any property we touched (or that already had access) may now
+  // be instant-laned — forget its cached lane so the next submit re-probes.
+  await Promise.all(
+    sites
+      .filter((s) => !s.error)
+      .map((s) => {
+        const id = s.identifier;
+        const host = id.startsWith("sc-domain:")
+          ? id.replace(/^sc-domain:/, "")
+          : (() => {
+              try {
+                return new URL(id).host;
+              } catch {
+                return id;
+              }
+            })();
+        return clearHostLane(user.id, host);
+      })
+  );
+
   return NextResponse.json({
     sites,
     summary: {

@@ -1,5 +1,9 @@
 import { db } from "@/lib/db";
-import { submitToGoogle, type EngineResult } from "@/lib/engines/google";
+import {
+  submitToGoogle,
+  classifyHosts,
+  upsertHostLane,
+} from "@/lib/engines/google";
 import { submitToIndexNow } from "@/lib/engines/indexnow";
 import { submitToBing } from "@/lib/engines/bing";
 import { runDiscovery } from "@/lib/engines/discovery";
@@ -143,17 +147,54 @@ export async function runSubmission(
     summary.engines[name] = { success: 0, failed: 0, skipped: 0 };
   }
 
+  // --- Lane detection: classify each unique host ONCE per batch ---
+  // "instant" → official Indexing API; "boost" → crawler attractors only
+  // (no publish call, no 403, no quota burn); "unknown" → try publish.
+  let laneMap = new Map<string, "instant" | "boost" | "unknown">();
+  if (engines.google) {
+    try {
+      laneMap = await classifyHosts(
+        urls.map((u) => new URL(u).host),
+        userId
+      );
+    } catch {
+      /* classification is an optimization — fall through with empty map */
+    }
+  }
+
   // --- Google: per-URL calls with rotation, bounded concurrency ---
   const noAccess = new Map<string, "no-account" | "permission">();
   if (engines.google) {
-    const googleResults = await mapPool(urls, 6, (url) => submitToGoogle(url, userId));
-    googleResults.forEach((result: EngineResult, idx: number) => {
-      const url = urls[idx];
+    const instantUrls = urls.filter(
+      (u) => (laneMap.get(new URL(u).host) ?? "unknown") !== "boost"
+    );
+    const googleResults =
+      instantUrls.length > 0
+        ? await mapPool(instantUrls, 6, (url) => submitToGoogle(url, userId))
+        : [];
+    const laneOf = new Map(
+      googleResults.map((r, i) => [instantUrls[i], r] as const)
+    );
 
-      // Permission wall → NOT an error. Google rejects instant indexing for
-      // any site the robot is not Owner of (Google's anti-spam rule for
-      // everyone, competitors included). Record it as a neutral skip and
-      // route the URL to the Boost engine below. Never shown as red failure.
+    urls.forEach((url, idx) => {
+      const host = new URL(url).host;
+      const lane = laneMap.get(host) ?? "unknown";
+
+      // Boost lane — site has no Owner permission (cached from the free
+      // probe). Skip the publish API entirely; the Boost engine below
+      // handles it. No google row, no red chip, no quota burn.
+      if (lane === "boost") {
+        noAccess.set(url, "permission");
+        summary.boosted++;
+        if (!summary.boostedHosts.includes(host)) summary.boostedHosts.push(host);
+        return;
+      }
+
+      const result = laneOf.get(url);
+      if (!result) return;
+
+      // Permission wall hit live (first-ever submission of this host) →
+      // NOT an error. Cache the host as boost-lane, count as boosted.
       if (result.status === "failed" && /permission needed/i.test(result.message ?? "")) {
         resultRows.push({
           submissionId: submissions[idx].id,
@@ -166,9 +207,9 @@ export async function runSubmission(
         });
         summary.engines.google.skipped++;
         noAccess.set(url, "permission");
-        summary.boosted!++;
-        const host = new URL(url).host;
-        if (!summary.boostedHosts!.includes(host)) summary.boostedHosts!.push(host);
+        summary.boosted++;
+        if (!summary.boostedHosts.includes(host)) summary.boostedHosts.push(host);
+        void upsertHostLane(userId, host, "boost"); // remember for next batches
         return;
       }
 
@@ -188,15 +229,18 @@ export async function runSubmission(
       ) {
         summary.sampleErrors.push(`Google · ${result.message}`);
       }
+      // Successful instant submission → remember the host is instant-laned
+      if (result.status === "success") {
+        void upsertHostLane(userId, host, "instant");
+      }
       // Track URLs the submitter has no official access for → discovery nudge
       if (
         result.status === "skipped" &&
         /no service account/i.test(result.message ?? "")
       ) {
         noAccess.set(url, "no-account");
-        summary.boosted!++;
-        const host = new URL(url).host;
-        if (!summary.boostedHosts!.includes(host)) summary.boostedHosts!.push(host);
+        summary.boosted++;
+        if (!summary.boostedHosts.includes(host)) summary.boostedHosts.push(host);
       }
     });
   }

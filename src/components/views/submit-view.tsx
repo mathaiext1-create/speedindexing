@@ -395,7 +395,11 @@ export function SubmitView({
                   ` · ${summary.duplicatesRemoved} duplicate(s) removed`}
               </p>
               <div className="flex flex-wrap gap-2">
-                {Object.entries(summary.engines).map(([engine, counts]) => (
+                {Object.entries(summary.engines)
+                  .filter(
+                    ([, c]) => c.success + c.failed + c.skipped > 0
+                  )
+                  .map(([engine, counts]) => (
                   <Badge
                     key={engine}
                     variant="outline"

@@ -185,6 +185,117 @@ export async function checkGooglePermission(
 }
 
 /**
+ * Per-host lane classification. For every unique host decide whether the
+ * official instant lane is possible (robot is a verified Owner) or the URL
+ * should go straight to the Boost lane (no permission).
+ *
+ * Uses the free urlNotifications/metadata GET — it consumes ZERO publish
+ * quota. Results are cached in the HostLane table for 24h so repeated
+ * submissions never re-probe or burn publish calls on a guaranteed 403.
+ *
+ * Returns a Map: host -> "instant" | "boost" | "unknown"
+ * ("unknown" = probe failed transiently → caller should still try publish).
+ */
+export async function classifyHosts(
+  hosts: string[],
+  userId: string
+): Promise<Map<string, "instant" | "boost" | "unknown">> {
+  const result = new Map<string, "instant" | "boost" | "unknown">();
+  const FRESH_MS = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  const unique = [...new Set(hosts)];
+  const stale: string[] = [];
+
+  await Promise.all(
+    unique.map(async (host) => {
+      try {
+        const row = await db.hostLane.findUnique({
+          where: { userId_host: { userId, host } },
+        });
+        if (row && now - new Date(row.checkedAt).getTime() < FRESH_MS) {
+          result.set(host, row.lane === "instant" ? "instant" : "boost");
+        } else {
+          stale.push(host);
+        }
+      } catch {
+        stale.push(host);
+      }
+    })
+  );
+
+  if (stale.length === 0) return result;
+
+  const accounts = await db.serviceAccount.findMany({
+    where: { isActive: true, userId },
+    orderBy: { lastUsedAt: "asc" },
+    take: 1,
+  });
+
+  await Promise.all(
+    stale.map(async (host) => {
+      // No service account → instant lane impossible; boost only.
+      if (accounts.length === 0) {
+        result.set(host, "boost");
+        return;
+      }
+      const account = accounts[0];
+      try {
+        const token = await getAccessToken(account);
+        const res = await fetch(
+          `https://indexing.googleapis.com/v3/urlNotifications/metadata?url=${encodeURIComponent(
+            `https://${host}/`
+          )}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(15_000),
+          }
+        );
+        if (res.ok || res.status === 404) {
+          result.set(host, "instant");
+          await upsertHostLane(userId, host, "instant");
+        } else if (res.status === 403) {
+          result.set(host, "boost");
+          await upsertHostLane(userId, host, "boost");
+        } else {
+          result.set(host, "unknown"); // transient — don't cache
+        }
+      } catch {
+        result.set(host, "unknown"); // network issue — don't cache
+      }
+    })
+  );
+
+  return result;
+}
+
+/** Cache a host's lane (best-effort — never throws). */
+export async function upsertHostLane(
+  userId: string,
+  host: string,
+  lane: "instant" | "boost"
+): Promise<void> {
+  try {
+    await db.hostLane.upsert({
+      where: { userId_host: { userId, host } },
+      update: { lane, checkedAt: new Date() },
+      create: { userId, host, lane },
+    });
+  } catch {
+    /* cache is best-effort */
+  }
+}
+
+/** Forget a host's cached lane (used after Connect Google fixes permission). */
+export async function clearHostLane(userId: string, host: string): Promise<void> {
+  try {
+    await db.hostLane.deleteMany({ where: { userId, host } });
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
  * Submit one URL to the Google Indexing API.
  * Rotates through active service accounts; on quota errors it tries the next.
  */

@@ -17,8 +17,8 @@ if (!process.env.SUPA_DB) {
 const dst = new SQL({ url: process.env.SUPA_DB, prepare: false, max: 1 });
 
 console.log("0) Wiping Supabase tables (fresh mirror)...");
-for (const t of ["SubmissionResult", "Submission", "BingConfig", "IndexNowKey", "ServiceAccount", "User"]) {
-  await dst.unsafe(`DELETE FROM "${t}"`);
+for (const t of ["SubmissionResult", "Submission", "BingConfig", "IndexNowKey", "ServiceAccount", "HostLane", "User"]) {
+  try { await dst.unsafe(`DELETE FROM "${t}"`); } catch { /* table may not exist yet */ }
 }
 console.log("   done");
 
@@ -70,6 +70,13 @@ const DDL = [
     CONSTRAINT "SubmissionResult_submissionId_fkey"
       FOREIGN KEY ("submissionId") REFERENCES "Submission"("id")
       ON DELETE CASCADE ON UPDATE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS "HostLane" (
+    "id" TEXT PRIMARY KEY,
+    "userId" TEXT,
+    "host" TEXT NOT NULL,
+    "lane" TEXT NOT NULL,
+    "checkedAt" ${TS} NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "HostLane_userId_host_key" ON "HostLane"("userId","host")`,
   `DROP INDEX IF EXISTS "ServiceAccount_clientEmail_key"`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "ServiceAccount_userId_clientEmail_key" ON "ServiceAccount"("userId","clientEmail")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "BingConfig_userId_key" ON "BingConfig"("userId")`,
@@ -93,6 +100,7 @@ const TABLES = [
   ["BingConfig", ["id", "userId", "apiKey", "updatedAt"]],
   ["Submission", ["id", "userId", "url", "host", "source", "createdAt"]],
   ["SubmissionResult", ["id", "submissionId", "engine", "status", "httpStatus", "message", "accountLabel", "createdAt"]],
+  ["HostLane", ["id", "userId", "host", "lane", "checkedAt"]],
 ];
 
 console.log("\n2) Copying data...");

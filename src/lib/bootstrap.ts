@@ -87,6 +87,15 @@ export function ensureSchema(): Promise<void> {
           ON DELETE CASCADE ON UPDATE CASCADE
       )`);
 
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "HostLane" (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT,
+        "host" TEXT NOT NULL,
+        "lane" TEXT NOT NULL,
+        "checkedAt" ${ts} NOT NULL DEFAULT ${now}
+      )`);
+
     // --- tolerant upgrades for databases created before the SaaS update ---
     for (const table of ["ServiceAccount", "IndexNowKey", "BingConfig", "Submission"]) {
       await tryExec(`ALTER TABLE "${table}" ADD COLUMN "userId" TEXT`);
@@ -105,6 +114,10 @@ export function ensureSchema(): Promise<void> {
       );
       await tryExec(`CREATE UNIQUE INDEX IF NOT EXISTS "BingConfig_userId_key" ON "BingConfig"("userId")`);
     }
+
+    await tryExec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "HostLane_userId_host_key" ON "HostLane"("userId","host")`
+    );
 
     await tryExec(
       `CREATE INDEX IF NOT EXISTS "Submission_createdAt_idx" ON "Submission"("createdAt")`

@@ -21,6 +21,7 @@ model User {
   indexNowKeys    IndexNowKey[]
   bingConfig      BingConfig?
   submissions     Submission[]
+  hostLanes       HostLane[]
 }
 
 // Google Indexing API service accounts (rotate to multiply the 200/day quota)
@@ -88,4 +89,19 @@ model SubmissionResult {
 
   @@index([submissionId])
   @@index([engine, status])
+}
+
+// Per-host lane cache: "instant" (owner permission verified — official API)
+// or "boost" (no permission — crawler-attractor lane). Avoids burning a
+// publish call on a guaranteed 403 for every submission; self-heals after
+// 24h or when the user refreshes via Check / Connect Google.
+model HostLane {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  host      String
+  lane      String // instant | boost
+  checkedAt DateTime @default(now()) @updatedAt
+
+  @@unique([userId, host])
 }
