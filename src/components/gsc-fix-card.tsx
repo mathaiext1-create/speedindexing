@@ -121,7 +121,9 @@ export function GscFixCard({
   const [checking, setChecking] = useState(false);
   const [checkResults, setCheckResults] = useState<PermissionResult[] | null>(null);
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
+  const [copiedMsg, setCopiedMsg] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const origin =
     typeof window !== "undefined" ? window.location.origin : "";
 
@@ -223,6 +225,31 @@ export function GscFixCard({
     navigator.clipboard.writeText(email);
     setCopiedEmail(email);
     setTimeout(() => setCopiedEmail(null), 1500);
+  }
+
+  /** Ready-made message the user can send a client who owns the site. */
+  const clientMessage = useCallback(() => {
+    const robot = emails[0] ?? "<your-robot-email>";
+    return [
+      "Hi! To turn on instant Google indexing for your website, I need one small (private) permission from your Google account. It takes 2 minutes:",
+      "",
+      "1. Open https://search.google.com/search-console and log in with the Google account that owns your site",
+      "2. Select your website",
+      "3. Bottom-left: Settings → Users and permissions → Add user",
+      `4. Email: ${robot}  |  Role: Owner  →  Add`,
+      "",
+      "This is a private technical setting so I can push your pages to Google instantly. Nothing becomes public and your site data stays private.",
+      "",
+      "If your site is not in Search Console yet: click “Add property” → choose “Domain” → follow the DNS steps it shows, then do the 4 steps above.",
+      "",
+      "Once done, just tell me — every page for your site will reach Google in minutes from then on.",
+    ].join("\n");
+  }, [emails]);
+
+  function copyClientMessage() {
+    navigator.clipboard.writeText(clientMessage());
+    setCopiedMsg(true);
+    setTimeout(() => setCopiedMsg(false), 1500);
   }
 
   return (
@@ -404,6 +431,45 @@ export function GscFixCard({
           <ExternalLink className="h-3.5 w-3.5" />
           Open Search Console users page
         </a>
+      </div>
+
+      {/* Option 3 — agency mode: client owns the site */}
+      <div className="rounded-md border bg-background/60 p-3 space-y-2">
+        <p className="text-xs font-medium">
+          Client&apos;s site (you have no access)? Send them this message —
+          2 minutes for them, instant indexing forever
+        </p>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          No tool can index a site without owner permission — Google blocks it
+          for everyone (competitors included). The client you billed adds one
+          email as Owner and every future URL of that site goes through the
+          official fast path automatically.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={copyClientMessage}>
+            {copiedMsg ? (
+              <BadgeCheck className="h-4 w-4 text-emerald-400" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+            {copiedMsg ? "Copied — paste it to your client" : "Copy client message"}
+          </Button>
+          <Collapsible open={previewOpen} onOpenChange={setPreviewOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground">
+                Preview
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${previewOpen ? "rotate-180" : ""}`}
+                />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <pre className="mt-2 whitespace-pre-wrap rounded-md border bg-muted/30 p-2.5 text-xs text-muted-foreground leading-relaxed">
+                {clientMessage()}
+              </pre>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
       </div>
 
       {/* Verify */}
