@@ -76,9 +76,9 @@ export async function runDiscovery(url: string): Promise<EngineResult> {
     status: reached > 0 ? "success" : "failed",
     message:
       reached > 0
-        ? `Crawler-attractors triggered (${notes.join(
+        ? `Boost submitted — ${notes.join(
             ", "
-          )}). This site has no Owner permission yet, so official instant engines are off — crawlers will discover the URL naturally, usually within hours to a few days. For minutes-fast indexing, get the one-time Owner permission from the site owner (permission card below).`
-        : `Discovery services were unreachable right now — press Retry later. This site also has no Owner permission, so official instant engines are off (permission card below).`,
+          )}. Google discovers the URL naturally, usually within hours to a few days. Unlock the instant lane with a one-time Owner permission (see the card below).`
+        : `Boost services were unreachable right now — press Retry later. This site also has no Owner permission yet (see the card below).`,
   };
 }

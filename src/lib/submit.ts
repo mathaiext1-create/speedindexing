@@ -17,6 +17,10 @@ export type SubmitSummary = {
   duplicatesRemoved: number;
   engines: Record<string, { success: number; failed: number; skipped: number }>;
   sampleErrors: string[];
+  /** URLs without Owner permission that were auto-routed to the Boost engine */
+  boosted: number;
+  /** Hosts that need a one-time Owner add to unlock the instant lane */
+  boostedHosts: string[];
 };
 
 /** Parse raw textarea input into validated, deduped URLs. */
@@ -127,6 +131,8 @@ export async function runSubmission(
     duplicatesRemoved,
     engines: {},
     sampleErrors: [...errors],
+    boosted: 0,
+    boostedHosts: [],
   };
 
   const enginesToRun = Object.entries(engines)
@@ -142,6 +148,30 @@ export async function runSubmission(
   if (engines.google) {
     const googleResults = await mapPool(urls, 6, (url) => submitToGoogle(url, userId));
     googleResults.forEach((result: EngineResult, idx: number) => {
+      const url = urls[idx];
+
+      // Permission wall → NOT an error. Google rejects instant indexing for
+      // any site the robot is not Owner of (Google's anti-spam rule for
+      // everyone, competitors included). Record it as a neutral skip and
+      // route the URL to the Boost engine below. Never shown as red failure.
+      if (result.status === "failed" && /permission needed/i.test(result.message ?? "")) {
+        resultRows.push({
+          submissionId: submissions[idx].id,
+          engine: "google",
+          status: "skipped",
+          httpStatus: result.httpStatus,
+          message:
+            "Instant lane locked — no Owner permission for this site yet. URL auto-routed to the Boost engine. To unlock instant: add the robot email as Owner in Search Console (see permission card).",
+          accountLabel: result.accountLabel,
+        });
+        summary.engines.google.skipped++;
+        noAccess.set(url, "permission");
+        summary.boosted!++;
+        const host = new URL(url).host;
+        if (!summary.boostedHosts!.includes(host)) summary.boostedHosts!.push(host);
+        return;
+      }
+
       resultRows.push({
         submissionId: submissions[idx].id,
         engine: result.engine,
@@ -163,12 +193,10 @@ export async function runSubmission(
         result.status === "skipped" &&
         /no service account/i.test(result.message ?? "")
       ) {
-        noAccess.set(urls[idx], "no-account");
-      } else if (
-        result.status === "failed" &&
-        /permission/i.test(result.message ?? "")
-      ) {
-        noAccess.set(urls[idx], "permission");
+        noAccess.set(url, "no-account");
+        summary.boosted!++;
+        const host = new URL(url).host;
+        if (!summary.boostedHosts!.includes(host)) summary.boostedHosts!.push(host);
       }
     });
   }

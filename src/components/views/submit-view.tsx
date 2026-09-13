@@ -28,11 +28,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { EngineChip, PipelineStatusChip } from "@/components/engine-chips";
-import {
-  GscFixCard,
-  extractServiceEmails,
-  isGscPermissionError,
-} from "@/components/gsc-fix-card";
+import { GscFixCard } from "@/components/gsc-fix-card";
 import {
   api,
   type StatsDto,
@@ -422,6 +418,27 @@ export function SubmitView({
                   </Badge>
                 ))}
               </div>
+              {/* Boosted (no-access) URLs — positive framing, never an error */}
+              {!!summary.boosted && summary.boosted > 0 && (
+                <div className="flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3">
+                  <Rocket className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <div className="text-xs leading-relaxed">
+                    <p className="font-medium text-emerald-300">
+                      {summary.boosted} URL{summary.boosted > 1 ? "s" : ""}{" "}
+                      boosted — submitted to the crawler network
+                    </p>
+                    <p className="text-muted-foreground mt-0.5">
+                      Google discovers boosted URLs naturally, usually within
+                      hours to a few days
+                      {summary.boostedHosts && summary.boostedHosts.length > 0
+                        ? ` (site${summary.boostedHosts.length > 1 ? "s" : ""}: ${summary.boostedHosts.join(", ")})`
+                        : ""}
+                      . Unlock the instant lane for a site with the one-time
+                      Owner permission below.
+                    </p>
+                  </div>
+                </div>
+              )}
               {summary.sampleErrors.length > 0 && (
                 <ul className="space-y-1">
                   {summary.sampleErrors.map((err, i) => (
@@ -435,15 +452,12 @@ export function SubmitView({
                   ))}
                 </ul>
               )}
-              {summary.engines.google &&
-                summary.engines.google.failed > 0 &&
-                isGscPermissionError(summary.sampleErrors) && (
-                  <GscFixCard
-                    emails={extractServiceEmails(summary.sampleErrors)}
-                    onRetry={() => lastSubmitted && doSubmit(lastSubmitted)}
-                    compact
-                  />
-                )}
+              {!!summary.boosted && summary.boosted > 0 && (
+                <GscFixCard
+                  onRetry={() => lastSubmitted && doSubmit(lastSubmitted)}
+                  compact
+                />
+              )}
             </div>
           )}
         </CardContent>

@@ -262,17 +262,18 @@ export function GscFixCard({
         <ShieldAlert className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
         <div className="space-y-1 min-w-0">
           <p className="text-sm font-medium text-amber-300">
-            Make Google accept your URLs — one-time, ~1 minute
+            Unlock the instant lane for boosted sites — one-time, ~1 minute
           </p>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Google only lets the <em>owner</em> of a website ask for faster
-            crawling (that is Google&apos;s anti-spam rule, not ours). You add
-            your own private &quot;robot account&quot; as a helper inside your
-            own Search Console.
+            Boosted URLs are already on their way — Google crawls them
+            naturally. For <em>instant</em> indexing, Google only lets the{" "}
+            <em>owner</em> of a website use the fast API (that is
+            Google&apos;s anti-spam rule, not ours). The site owner adds your
+            own private &quot;robot account&quot; as a helper inside their
+            Search Console.
             <span className="text-amber-200/90 font-medium">
               {" "}
-              Nothing becomes public — your site and its data stay 100%
-              private.
+              Nothing becomes public — the site and its data stay 100% private.
             </span>
           </p>
         </div>

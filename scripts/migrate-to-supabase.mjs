@@ -6,7 +6,12 @@
 // 3) verify counts on both sides
 import { SQL } from "bun";
 
-const src = new SQL(process.env.PROD_DB);
+const NEON_DB = "postgresql://neondb_owner:npg_9WVm2MnNdLwq@ep-twilight-night-ay6dik7i-pooler.c-5.us-east-2.aws.neon.tech/neondb?sslmode=require";
+const src = new SQL(process.env.PROD_DB || NEON_DB, { max: 1 });
+if (!process.env.SUPA_DB) {
+  console.error("FATAL: SUPA_DB env var required — refusing to guess the destination");
+  process.exit(1);
+}
 // Supavisor transaction pooler: disable prepared statements (avoids
 // "prepared statement ... already exists" collisions across pooled sessions)
 const dst = new SQL({ url: process.env.SUPA_DB, prepare: false, max: 1 });

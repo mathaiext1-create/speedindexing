@@ -22,11 +22,12 @@ export type SubmissionDto = {
 export type SubmitSummary = {
   total: number;
   duplicatesRemoved: number;
-  engines: Record<
-    string,
-    { success: number; failed: number; skipped: number }
-  >;
+  engines: Record<string, { success: number; failed: number; skipped: number }>;
   sampleErrors: string[];
+  /** URLs without Owner permission that were auto-routed to the Boost engine */
+  boosted?: number;
+  /** Hosts that need a one-time Owner add to unlock the instant lane */
+  boostedHosts?: string[];
 };
 
 export type StatsDto = {
