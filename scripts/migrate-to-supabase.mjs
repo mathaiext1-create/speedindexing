@@ -7,7 +7,9 @@
 import { SQL } from "bun";
 
 const src = new SQL(process.env.PROD_DB);
-const dst = new SQL(process.env.SUPA_DB);
+// Supavisor transaction pooler: disable prepared statements (avoids
+// "prepared statement ... already exists" collisions across pooled sessions)
+const dst = new SQL({ url: process.env.SUPA_DB, prepare: false, max: 1 });
 
 console.log("0) Wiping Supabase tables (fresh mirror)...");
 for (const t of ["SubmissionResult", "Submission", "BingConfig", "IndexNowKey", "ServiceAccount", "User"]) {
