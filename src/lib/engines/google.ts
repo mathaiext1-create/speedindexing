@@ -1,5 +1,9 @@
 import crypto from "crypto";
 import { db } from "@/lib/db";
+import {
+  publishViaUserAccount,
+  metadataViaUserAccount,
+} from "@/lib/google-oauth";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const INDEXING_URL =
@@ -234,6 +238,27 @@ export async function classifyHosts(
 
   await Promise.all(
     stale.map(async (host) => {
+      // Preferred probe: the user's OWN connected Google account (one-click
+      // instant lane). Its metadata response reflects the owner permission
+      // of the account that actually verified the site.
+      const viaUser = await metadataViaUserAccount(
+        `https://${host}/`,
+        userId
+      );
+      if (viaUser) {
+        if (viaUser.ok || viaUser.status === 404) {
+          result.set(host, "instant");
+          await upsertHostLane(userId, host, "instant");
+          return;
+        }
+        if (viaUser.status === 403) {
+          result.set(host, "boost");
+          await upsertHostLane(userId, host, "boost");
+          return;
+        }
+        // 401/5xx → transient, fall through to the service-account probe
+      }
+
       // No service account → instant lane impossible; boost only.
       if (accounts.length === 0) {
         result.set(host, "boost");
@@ -303,6 +328,37 @@ export async function submitToGoogle(
   url: string,
   userId: string
 ): Promise<EngineResult> {
+  // --- Lane 0: the user's OWN connected Google account ------------------
+  // This is the one-click path competitors use: the account that verified
+  // the site in Search Console publishes directly. No robot emails.
+  const viaUser = await publishViaUserAccount(url, userId);
+  if (viaUser) {
+    if (viaUser.ok) {
+      return {
+        engine: "google",
+        status: "success",
+        httpStatus: viaUser.httpStatus,
+        message: viaUser.message,
+        accountLabel: "Your Google account",
+      };
+    }
+    // Permission wall → handled by submit.ts (auto-routes to Boost).
+    // Other kinds (auth/quota/error) → surface immediately unless service
+    // accounts exist as a fallback lane.
+    const saFallback =
+      (await db.serviceAccount.count({ where: { isActive: true, userId } })) > 0;
+    if (!saFallback) {
+      return {
+        engine: "google",
+        status: "failed",
+        httpStatus: viaUser.httpStatus,
+        message: viaUser.message,
+        accountLabel: "Your Google account",
+      };
+    }
+    // else: fall through and let service accounts try.
+  }
+
   const accounts = await db.serviceAccount.findMany({
     where: { isActive: true, userId },
     orderBy: { lastUsedAt: "asc" },
@@ -313,9 +369,9 @@ export async function submitToGoogle(
       engine: "google",
       status: "skipped",
       message:
-        "Not submitted to the Google Indexing API — no service account connected yet. " +
-        "The URL was auto-routed to the Boost engine (crawler attractors). " +
-        "Add a service account in Engines for instant Google submission.",
+        "Not submitted to the Google Indexing API — no service account and no connected Google account yet. " +
+        "Press Connect Google in the permission card (ONE sign-in = instant lane) or add a service account in Engines. " +
+        "The URL was auto-routed to the Boost engine (crawler attractors).",
     };
   }
 
@@ -412,7 +468,30 @@ export async function checkIndexStatus(
     url
   )}&filter=0`;
 
-  // --- 1. Official metadata endpoint (free, no publish quota) ---
+  // --- 1. Official metadata endpoint (free, no publish quota) ----------
+  // 1a. The user's OWN connected Google account (one-click instant lane)
+  const userMeta = await metadataViaUserAccount(url, userId);
+  if (userMeta?.ok) {
+    return {
+      submitted: true,
+      when: userMeta.latest?.notifyTime,
+      via: "api",
+      message: `Confirmed by Google — your connected account's Indexing API history shows this URL${
+        userMeta.latest?.type ? ` (type: ${userMeta.latest.type})` : ""
+      }. Google typically crawls it shortly after.`,
+      siteSearchUrl,
+    };
+  }
+  if (userMeta && userMeta.status === 404) {
+    return {
+      submitted: false,
+      via: "api",
+      message:
+        "Verified via Google API with your connected account: this URL has never been submitted through the Indexing API. Press Retry to submit it now.",
+      siteSearchUrl,
+    };
+  }
+  // 1b. Service accounts
   const accounts = await db.serviceAccount.findMany({
     where: { isActive: true, userId },
     orderBy: { lastUsedAt: "asc" },

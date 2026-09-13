@@ -26,7 +26,8 @@ export function verifyPassword(password: string, stored: string): boolean {
 
 /* ---------------- session tokens (uid.exp.hmac) ---------------- */
 
-function getSecret(): string {
+/** HMAC secret used for session tokens (also reused for OAuth state signing). */
+export function getSessionSecret(): string {
   // Prefer an explicit secret; otherwise derive one that is stable per
   // deployment but not hardcoded (changing DATABASE_URL rotates sessions).
   return (
@@ -37,6 +38,8 @@ function getSecret(): string {
       .digest("hex")
   );
 }
+
+const getSecret = getSessionSecret;
 
 export function createSessionToken(userId: string, days = SESSION_DAYS): string {
   const exp = Date.now() + days * 24 * 60 * 60 * 1000;

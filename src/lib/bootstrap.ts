@@ -96,6 +96,22 @@ export function ensureSchema(): Promise<void> {
         "checkedAt" ${ts} NOT NULL DEFAULT ${now}
       )`);
 
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "GoogleConnection" (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "email" TEXT,
+        "refreshToken" TEXT NOT NULL,
+        "accessToken" TEXT,
+        "expiresAt" ${ts},
+        "createdAt" ${ts} NOT NULL DEFAULT ${now},
+        "updatedAt" ${ts} NOT NULL DEFAULT ${now}
+      )`);
+
+    await tryExec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "GoogleConnection_userId_key" ON "GoogleConnection"("userId")`
+    );
+
     // --- tolerant upgrades for databases created before the SaaS update ---
     for (const table of ["ServiceAccount", "IndexNowKey", "BingConfig", "Submission"]) {
       await tryExec(`ALTER TABLE "${table}" ADD COLUMN "userId" TEXT`);

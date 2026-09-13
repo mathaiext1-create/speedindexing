@@ -200,7 +200,7 @@ export async function runSubmission(
           engine: "google",
           status: "skipped",
           message:
-            "Not submitted to the Google Indexing API — this site has no Owner permission yet, so instant submission is locked. The URL was auto-routed to the Boost engine. Press Check to verify its live Google status.",
+            "Not submitted to the Google Indexing API — this site has no Owner permission yet, so instant submission is locked. The URL was auto-routed to the Boost engine. To unlock instant: press Connect Google (ONE sign-in) or add a robot email as Owner. Press Check to verify its live Google status.",
         });
         return;
       }
@@ -217,7 +217,7 @@ export async function runSubmission(
           status: "skipped",
           httpStatus: result.httpStatus,
           message:
-            "Instant lane locked — no Owner permission for this site yet. URL auto-routed to the Boost engine. To unlock instant: add the robot email as Owner in Search Console (see permission card).",
+            "Instant lane locked — no Owner permission for this site yet. URL auto-routed to the Boost engine. To unlock instant: press Connect Google (ONE sign-in) or add the robot email as Owner (see permission card).",
           accountLabel: result.accountLabel,
         });
         summary.engines.google.skipped++;

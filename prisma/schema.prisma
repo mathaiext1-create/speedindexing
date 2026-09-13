@@ -22,6 +22,7 @@ model User {
   bingConfig      BingConfig?
   submissions     Submission[]
   hostLanes       HostLane[]
+  googleConnection GoogleConnection?
 }
 
 // Google Indexing API service accounts (rotate to multiply the 200/day quota)
@@ -89,6 +90,23 @@ model SubmissionResult {
 
   @@index([submissionId])
   @@index([engine, status])
+}
+
+// One-click "Sign in with Google" connection — stores the user's OWN OAuth
+// refresh token with the Indexing API scope, so every submission goes
+// through the official Google Indexing API instantly (no service accounts,
+// no Search Console user management) — the same mechanism paid instant
+// indexers use behind their "Connect Google" buttons.
+model GoogleConnection {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email        String?
+  refreshToken String
+  accessToken  String?
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 // Per-host lane cache: "instant" (owner permission verified — official API)

@@ -124,6 +124,14 @@ export function GscFixCard({
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [instantOpen, setInstantOpen] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [oauth, setOauth] = useState<{
+    configured: boolean;
+    connected: boolean;
+    email: string | null;
+    redirectUri: string;
+  } | null>(null);
   const origin =
     typeof window !== "undefined" ? window.location.origin : "";
 
@@ -144,6 +152,58 @@ export function GscFixCard({
       .then((d) => setClientId(d.googleOAuthClientId))
       .catch(() => setClientId(null));
   }, []);
+
+  useEffect(() => {
+    api<{
+      configured: boolean;
+      connected: boolean;
+      email: string | null;
+      redirectUri: string;
+    }>("/api/google/oauth/status")
+      .then(setOauth)
+      .catch(() => setOauth(null));
+  }, []);
+
+  // Handle the redirect back from the Google consent screen
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const flag = q.get("google");
+    if (!flag) return;
+    if (flag === "connected") {
+      toast({
+        title: "Google connected — instant lane is ON",
+        description:
+          "Every URL you submit now goes through the official Indexing API. Press Retry on any boosted URLs to push them instantly.",
+      });
+      setOauth((prev) => (prev ? { ...prev, connected: true } : prev));
+    } else if (flag === "error") {
+      toast({
+        title: "Google connect did not finish",
+        description: q.get("reason") ?? "Please try again.",
+        variant: "destructive",
+      });
+    }
+    history.replaceState(null, "", window.location.pathname);
+  }, [toast]);
+
+  async function disconnectGoogle() {
+    setDisconnecting(true);
+    try {
+      await api("/api/google/oauth/disconnect", { method: "POST" });
+      setOauth((prev) =>
+        prev ? { ...prev, connected: false, email: null } : prev
+      );
+      toast({ title: "Google disconnected" });
+    } catch (e) {
+      toast({
+        title: "Could not disconnect",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setDisconnecting(false);
+    }
+  }
 
   /** One-click: connect Google account → auto-add owner on every property. */
   const connectGoogle = useCallback(async () => {
@@ -279,6 +339,93 @@ export function GscFixCard({
         </div>
       </div>
 
+      {/* Option 0 — INSTANT: sign in with Google (the competitor one-click path) */}
+      <div className="rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 space-y-2">
+        <p className="text-xs font-medium text-emerald-300">
+          FASTEST — Sign in with Google: one click, then every URL goes
+          through the official Indexing API instantly
+        </p>
+        {oauth?.connected ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-300">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Connected{oauth.email ? ` as ${oauth.email}` : ""} — instant lane
+              active
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-xs text-muted-foreground"
+              onClick={disconnectGoogle}
+              disabled={disconnecting}
+            >
+              {disconnecting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : null}
+              Disconnect
+            </Button>
+          </div>
+        ) : oauth?.configured ? (
+          <Button asChild size="sm" className="brand-glow">
+            <a href="/api/google/oauth/start">
+              <ShieldCheck className="h-4 w-4" />
+              Connect my Google account
+            </a>
+          </Button>
+        ) : (
+          <Collapsible open={instantOpen} onOpenChange={setInstantOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" size="sm" className="font-normal">
+                Unlock the connect button — one-time setup (3 min)
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${
+                    instantOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <ol className="space-y-1.5 text-xs text-muted-foreground">
+                {[
+                  "Open console.cloud.google.com → APIs & Services → Library → search 'Web Search Indexing API' → Enable.",
+                  "APIs & Services → OAuth consent screen → type External → fill only the app name → add your own Google email under 'Test users' → Save.",
+                  "Credentials → Create credentials → OAuth client ID → type 'Web application'.",
+                  "Authorized JavaScript origins: add " + (origin || "your tool URL"),
+                  "Authorized redirect URIs: add " + (oauth?.redirectUri || (origin ? origin + "/api/google/oauth/callback" : "your tool URL + /api/google/oauth/callback")),
+                  "Copy BOTH the Client ID and the Client Secret.",
+                  "Vercel → your project → Settings → Environment Variables → add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET → Redeploy once.",
+                  "Come back here → press 'Connect my Google account' → done forever.",
+                ].map((s, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="font-mono text-emerald-400 shrink-0">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ol>
+              <a
+                href="https://console.cloud.google.com/apis/credentials"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:underline mt-2"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open Google Cloud credentials
+              </a>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          This is exactly how paid instant indexers work: Google asks
+          &quot;allow this app to submit URLs for you?&quot; — you click Allow,
+          and your own account (already the owner of your site in Search
+          Console) pushes every URL through the official API. Nothing public,
+          nothing shared, and it works for every future URL of every site you
+          own.
+        </p>
+      </div>
+
       {/* Robot emails */}
       {emails.length > 0 && (
         <div className="space-y-1.5">
@@ -308,7 +455,7 @@ export function GscFixCard({
       {/* Option 1 — automatic */}
       <div className="rounded-md border bg-background/60 p-3 space-y-2">
         <p className="text-xs font-medium">
-          Option 1 — Automatic (recommended): connect Google and we add the
+          Have service accounts? — Automatic: connect Google and we add the
           permission for you
         </p>
         {clientId ? (
@@ -406,7 +553,7 @@ export function GscFixCard({
       {/* Option 2 — manual */}
       <div className="rounded-md border bg-background/60 p-3 space-y-2">
         <p className="text-xs font-medium">
-          Option 2 — Manual (2 minutes, no Google connect needed)
+          Service accounts — Manual (2 minutes, no Google connect needed)
         </p>
         <ol className="space-y-1.5 text-xs text-muted-foreground">
           {[

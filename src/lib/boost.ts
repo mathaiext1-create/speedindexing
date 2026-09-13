@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { runDiscovery } from "@/lib/engines/discovery";
+import { publishViaUserAccount } from "@/lib/google-oauth";
 
 /**
  * Self-repeating Boost.
@@ -117,6 +118,34 @@ export async function sweepUser(
       return false;
     }
   });
+
+  // Self-repeating INSTANT lane: users who connected their own Google
+  // account get these URLs re-published through the official Indexing API
+  // on every sweep — not just crawler attractors. This is the retention
+  // mechanism no one-shot competitor tool has.
+  try {
+    const connected = await db.googleConnection.count({ where: { userId } });
+    if (connected > 0) {
+      await mapPool(eligible.slice(0, 10), 3, async (s) => {
+        const res = await publishViaUserAccount(s.url, userId);
+        if (!res) return;
+        await db.submissionResult
+          .create({
+            data: {
+              submissionId: s.id,
+              engine: "google",
+              status: res.ok ? "success" : "skipped",
+              httpStatus: res.httpStatus ?? null,
+              message: `Auto re-boost — ${res.message}`,
+              accountLabel: "Your Google account",
+            },
+          })
+          .catch(() => undefined);
+      });
+    }
+  } catch {
+    /* best-effort — never break the sweep */
+  }
 
   return { reboosted: fired.filter(Boolean).length, throttled: false, checked: candidates.length };
 }
