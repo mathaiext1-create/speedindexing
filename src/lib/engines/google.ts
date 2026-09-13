@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import {
   publishViaUserAccount,
   metadataViaUserAccount,
+  hasGoogleConnection,
+  oauthConfigured,
 } from "@/lib/google-oauth";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -331,7 +333,22 @@ export async function submitToGoogle(
   // --- Lane 0: the user's OWN connected Google account ------------------
   // This is the one-click path competitors use: the account that verified
   // the site in Search Console publishes directly. No robot emails.
-  const viaUser = await publishViaUserAccount(url, userId);
+  const googleConnected = await hasGoogleConnection(userId);
+  const viaUser = googleConnected
+    ? await publishViaUserAccount(url, userId)
+    : null;
+
+  if (googleConnected && !viaUser) {
+    // Connection row exists but the saved refresh token could not be used.
+    return {
+      engine: "google",
+      status: "failed",
+      message:
+        "Your saved Google connection could not be refreshed — open the permission card, press Disconnect, then Connect my Google account again (10 seconds).",
+      accountLabel: "Your Google account",
+    };
+  }
+
   if (viaUser) {
     if (viaUser.ok) {
       return {
@@ -368,10 +385,11 @@ export async function submitToGoogle(
     return {
       engine: "google",
       status: "skipped",
-      message:
-        "Not submitted to the Google Indexing API — no service account and no connected Google account yet. " +
-        "Press Connect Google in the permission card (ONE sign-in = instant lane) or add a service account in Engines. " +
-        "The URL was auto-routed to the Boost engine (crawler attractors).",
+      message: !googleConnected && oauthConfigured()
+        ? "Not submitted — the OAuth keys are installed on this deployment, but you have NOT pressed 'Connect my Google account' yet (green card, one sign-in, then click Allow at Google). Adding the keys alone changes nothing. The URL went to the Boost engine meanwhile."
+        : "Not submitted to the Google Indexing API — no connected Google account and no service account yet. " +
+          "Press Connect Google in the permission card (ONE sign-in = instant lane) or add a service account in Engines. " +
+          "The URL was auto-routed to the Boost engine (crawler attractors).",
     };
   }
 

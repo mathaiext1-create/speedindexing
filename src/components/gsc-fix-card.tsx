@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AlertCircle,
   BadgeCheck,
   CheckCircle2,
   Copy,
@@ -86,11 +87,13 @@ type ConnectSiteResult = {
   error?: string;
 };
 
-type PermissionResult = {
+type DiagStep = {
+  id: string;
   label: string;
-  clientEmail: string;
-  ok: boolean;
-  message: string;
+  ok: boolean | null;
+  detail: string;
+  fixLabel?: string;
+  fixUrl?: string;
 };
 
 /* ------------------------------------------------------------------ */
@@ -119,7 +122,7 @@ export function GscFixCard({
   } | null>(null);
   const [checkUrl, setCheckUrl] = useState("");
   const [checking, setChecking] = useState(false);
-  const [checkResults, setCheckResults] = useState<PermissionResult[] | null>(null);
+  const [diagSteps, setDiagSteps] = useState<DiagStep[] | null>(null);
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
@@ -164,9 +167,14 @@ export function GscFixCard({
       .catch(() => setOauth(null));
   }, []);
 
-  // Handle the redirect back from the Google consent screen
+  // Handle the redirect back from the Google consent screen + deep links
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
+    if (q.get("open") === "connect") {
+      setInstantOpen(true);
+      history.replaceState(null, "", window.location.pathname);
+      return;
+    }
     const flag = q.get("google");
     if (!flag) return;
     if (flag === "connected") {
@@ -257,22 +265,23 @@ export function GscFixCard({
     }
   }, [clientId, toast]);
 
-  async function checkPermission() {
+  /** Full 8-point diagnosis of why a URL is not getting into Google. */
+  async function diagnose() {
     if (!checkUrl.trim()) {
       toast({ title: "Type your site URL first", variant: "destructive" });
       return;
     }
     setChecking(true);
-    setCheckResults(null);
+    setDiagSteps(null);
     try {
-      const data = await api<{ results: PermissionResult[] }>(
-        "/api/google/permission-check",
-        { method: "POST", body: JSON.stringify({ url: checkUrl }) }
-      );
-      setCheckResults(data.results);
+      const data = await api<{ steps: DiagStep[] }>("/api/google/diagnose", {
+        method: "POST",
+        body: JSON.stringify({ url: checkUrl }),
+      });
+      setDiagSteps(data.steps);
     } catch (e) {
       toast({
-        title: "Check failed",
+        title: "Diagnose failed",
         description: e instanceof Error ? e.message : undefined,
         variant: "destructive",
       });
@@ -620,10 +629,11 @@ export function GscFixCard({
         </div>
       </div>
 
-      {/* Verify */}
+      {/* Diagnose — the full "why isn't my URL in Google?" checklist */}
       <div className="rounded-md border bg-background/60 p-3 space-y-2">
         <p className="text-xs font-medium">
-          Not sure it worked? Check permission for a site
+          Not indexing? Diagnose any URL — 30 seconds, tells you exactly what
+          is blocking it
         </p>
         <div className="flex flex-col sm:flex-row gap-2">
           <Input
@@ -635,7 +645,7 @@ export function GscFixCard({
           <Button
             variant="secondary"
             size="sm"
-            onClick={checkPermission}
+            onClick={diagnose}
             disabled={checking}
             className="sm:w-28"
           >
@@ -644,25 +654,49 @@ export function GscFixCard({
             ) : (
               <ShieldCheck className="h-4 w-4" />
             )}
-            Check
+            Diagnose
           </Button>
         </div>
-        {checkResults && (
-          <div className="space-y-1">
-            {checkResults.map((r) => (
-              <p
-                key={r.label}
-                className={`text-xs flex items-start gap-1.5 ${
-                  r.ok ? "text-emerald-400" : "text-red-400"
-                }`}
-              >
-                {r.ok ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+        {diagSteps && (
+          <div className="space-y-2">
+            {diagSteps.map((s) => (
+              <div key={s.id} className="text-xs flex items-start gap-1.5">
+                {s.ok === true ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0 text-emerald-400" />
+                ) : s.ok === false ? (
+                  <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-red-400" />
                 ) : (
-                  <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-400" />
                 )}
-                {r.message}
-              </p>
+                <div className="min-w-0">
+                  <span
+                    className={
+                      s.ok === false
+                        ? "font-medium text-red-400"
+                        : s.ok === true
+                          ? "text-emerald-400"
+                          : "text-amber-300"
+                    }
+                  >
+                    {s.label}:{" "}
+                  </span>
+                  <span className="text-muted-foreground">{s.detail}</span>
+                  {s.fixUrl && (
+                    <>
+                      {" "}
+                      <a
+                        href={s.fixUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-emerald-400 hover:underline"
+                      >
+                        {s.fixLabel ?? "Fix"}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
         )}

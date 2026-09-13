@@ -7,15 +7,27 @@ import {
   resolveOrigin,
   callbackUrl,
   exchangeCodeForTokens,
+  publishViaUserAccount,
 } from "@/lib/google-oauth";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+/** Map Google's OAuth error codes to what the user should actually do. */
+const FRIENDLY_ERRORS: Record<string, string> = {
+  access_denied:
+    "You clicked Cancel at Google — OR your OAuth app is in Testing mode and this Google email is not added as a Test user. Fix: Google Cloud → OAuth consent screen → Test users → add your email, then connect again.",
+  admin_policy_enforced:
+    "Your Google Workspace admin blocks unverified apps — connect with a personal @gmail.com account instead.",
+  org_internal:
+    "Your OAuth consent screen is set to 'Internal' — change it to External in Google Auth Platform, then connect again.",
+};
 
 /**
  * Google redirects back here after consent. We exchange the code for a
- * refresh token (stored on the user's row), forget cached host lanes so the
- * next submit re-probes with the new instant capability, and bounce back to
- * the dashboard.
+ * refresh token (stored on the user's row), then INSTANTLY re-submit the
+ * user's recent URLs through the Indexing API — so connecting produces
+ * visible "ok" results within seconds, not after manual retries.
  */
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
@@ -39,13 +51,11 @@ export async function GET(req: NextRequest) {
   }
 
   if (!code) {
-    return back(
-      `?google=error&reason=${encodeURIComponent(
-        googleError
-          ? `Google sign-in was cancelled (${googleError})`
-          : "No authorization code received"
-      )}`
-    );
+    const friendly = googleError
+      ? FRIENDLY_ERRORS[googleError] ??
+        `Google sign-in did not finish (${googleError})`
+      : "No authorization code received";
+    return back(`?google=error&reason=${encodeURIComponent(friendly)}`);
   }
 
   if (!oauthConfigured()) {
@@ -79,6 +89,44 @@ export async function GET(req: NextRequest) {
     await db.hostLane
       .deleteMany({ where: { userId: session.id } })
       .catch(() => undefined);
+
+    // ---- INSTANT WIN: auto-submit the most recent URLs right now ----------
+    // The user just authorized us; firing the first submissions immediately
+    // proves the lane works and matches the "connected in 1 minute" feeling
+    // competitors sell — without any manual retry.
+    try {
+      const recent = await db.submission.findMany({
+        where: {
+          userId: session.id,
+          createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        select: { id: true, url: true },
+      });
+      await Promise.allSettled(
+        recent.map(async (s) => {
+          const res = await publishViaUserAccount(s.url, session.id);
+          if (!res) return;
+          await db.submissionResult
+            .create({
+              data: {
+                submissionId: s.id,
+                engine: "google",
+                status: res.ok ? "success" : "failed",
+                httpStatus: res.httpStatus ?? null,
+                message: res.ok
+                  ? res.message
+                  : `Instant retry after connect — ${res.message}`,
+                accountLabel: "Your Google account",
+              },
+            })
+            .catch(() => undefined);
+        })
+      );
+    } catch {
+      /* best-effort — never block the redirect */
+    }
 
     return back("?google=connected");
   } catch (e) {
