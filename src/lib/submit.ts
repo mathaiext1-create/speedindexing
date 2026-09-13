@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { submitToGoogle, type EngineResult } from "@/lib/engines/google";
 import { submitToIndexNow } from "@/lib/engines/indexnow";
 import { submitToBing } from "@/lib/engines/bing";
+import { runDiscovery } from "@/lib/engines/discovery";
 
 export const MAX_URLS_PER_BATCH = 500;
 
@@ -137,6 +138,7 @@ export async function runSubmission(
   }
 
   // --- Google: per-URL calls with rotation, bounded concurrency ---
+  const noAccess = new Map<string, "no-account" | "permission">();
   if (engines.google) {
     const googleResults = await mapPool(urls, 6, (url) => submitToGoogle(url, userId));
     googleResults.forEach((result: EngineResult, idx: number) => {
@@ -155,6 +157,18 @@ export async function runSubmission(
         result.message
       ) {
         summary.sampleErrors.push(`Google · ${result.message}`);
+      }
+      // Track URLs the submitter has no official access for → discovery nudge
+      if (
+        result.status === "skipped" &&
+        /no service account/i.test(result.message ?? "")
+      ) {
+        noAccess.set(urls[idx], "no-account");
+      } else if (
+        result.status === "failed" &&
+        /permission/i.test(result.message ?? "")
+      ) {
+        noAccess.set(urls[idx], "permission");
       }
     });
   }
@@ -207,6 +221,30 @@ export async function runSubmission(
         summary.sampleErrors.push(`Bing · ${result.message}`);
       }
     }
+  }
+
+  // --- Discovery nudges: give no-access URLs the competitor treatment ---
+  // (crawler attractors so the URL is still pushed toward search crawlers)
+  const discoveryIdx = urls.reduce<number[]>(
+    (acc, url, i) => (noAccess.has(url) ? (acc.push(i), acc) : acc),
+    []
+  );
+  if (discoveryIdx.length > 0) {
+    summary.engines.discovery = { success: 0, failed: 0, skipped: 0 };
+    const dResults = await mapPool(discoveryIdx, 4, (idx) =>
+      runDiscovery(urls[idx])
+    );
+    dResults.forEach((res, i) => {
+      resultRows.push({
+        submissionId: submissions[discoveryIdx[i]].id,
+        engine: res.engine,
+        status: res.status,
+        httpStatus: res.httpStatus,
+        message: res.message,
+        accountLabel: res.accountLabel,
+      });
+      summary.engines.discovery[res.status]++;
+    });
   }
 
   if (resultRows.length > 0) {

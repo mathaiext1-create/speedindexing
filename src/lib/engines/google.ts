@@ -7,7 +7,7 @@ const INDEXING_URL =
 const SCOPE = "https://www.googleapis.com/auth/indexing";
 
 export type EngineResult = {
-  engine: "google" | "indexnow" | "bing";
+  engine: "google" | "indexnow" | "bing" | "discovery";
   status: "success" | "failed" | "skipped";
   httpStatus?: number;
   message: string;

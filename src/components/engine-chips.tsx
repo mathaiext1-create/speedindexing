@@ -14,6 +14,7 @@ const ENGINE_LABEL: Record<EngineName, string> = {
   google: "Google",
   indexnow: "IndexNow",
   bing: "Bing",
+  discovery: "Discovery",
 };
 
 const STATUS_STYLE = {

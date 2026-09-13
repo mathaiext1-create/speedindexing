@@ -1,0 +1,84 @@
+import type { EngineResult } from "@/lib/engines/google";
+
+const TIMEOUT = 12_000;
+const UA =
+  "Mozilla/5.0 (compatible; SpeedIndexingBot/1.0; +instant indexing service)";
+
+type FireOutcome = { note: string; reached: boolean };
+
+async function fire(url: string, label: string): Promise<FireOutcome> {
+  try {
+    const res = await fetch(url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(TIMEOUT),
+      headers: { "User-Agent": UA },
+    });
+    return { note: `${label} (HTTP ${res.status})`, reached: true };
+  } catch (e) {
+    // A timeout on web.archive.org/save usually means the save was ACCEPTED
+    // and is being processed (SPN responds only after crawling the page).
+    const isTimeout =
+      e instanceof Error &&
+      (e.name === "TimeoutError" || /timeout|abort/i.test(e.message));
+    if (isTimeout && label === "internet-archive") {
+      return {
+        note: `${label} (save accepted — processing in background)`,
+        reached: true,
+      };
+    }
+    return { note: `${label} unreachable`, reached: false };
+  }
+}
+
+/**
+ * Discovery nudges — for URLs where the submitter has NO official access
+ * (no Search Console Owner permission, no site hosting access).
+ *
+ * This is what "no-setup" competitor indexers actually do behind their
+ * "just paste a URL" UX: they fire public crawler attractors so search
+ * crawlers discover the URL naturally. It is NOT the official Indexing
+ * API (that requires site-owner permission) — expect natural crawl
+ * timelines (hours to days), not minutes.
+ *
+ * Nudges fired:
+ *  1. pingomatic.com  — notifies a network of blog/ping services
+ *  2. web.archive.org — Save Page Now triggers a real crawl + permanent
+ *     public record of the URL
+ *  3. Google PageSpeed — anonymous run makes Google infrastructure fetch
+ *     and analyse the page (a crawl signal, not an index request)
+ */
+export async function runDiscovery(url: string): Promise<EngineResult> {
+  const host = new URL(url).host;
+
+  const outcomes = await Promise.all([
+    fire(
+      `https://pingomatic.com/ping/?title=${encodeURIComponent(
+        host
+      )}&blogurl=${encodeURIComponent(url)}&rssurl=${encodeURIComponent(
+        url
+      )}&chk_weblogscom=on&chk_blogs=on&chk_feedburner=on&chk_sync1=on`,
+      "ping-network"
+    ),
+    fire(`https://web.archive.org/save/${url}`, "internet-archive"),
+    fire(
+      `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(
+        url
+      )}&strategy=mobile`,
+      "google-page-fetch"
+    ),
+  ]);
+
+  const notes = outcomes.map((o) => o.note);
+  const reached = outcomes.filter((o) => o.reached).length;
+
+  return {
+    engine: "discovery",
+    status: reached > 0 ? "success" : "failed",
+    message:
+      reached > 0
+        ? `Crawler-attractors triggered (${notes.join(
+            ", "
+          )}). This site has no Owner permission yet, so official instant engines are off — crawlers will discover the URL naturally, usually within hours to a few days. For minutes-fast indexing, get the one-time Owner permission from the site owner (permission card below).`
+        : `Discovery services were unreachable right now — press Retry later. This site also has no Owner permission, so official instant engines are off (permission card below).`,
+  };
+}

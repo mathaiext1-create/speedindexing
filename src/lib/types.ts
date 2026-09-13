@@ -1,4 +1,4 @@
-export type EngineName = "google" | "indexnow" | "bing";
+export type EngineName = "google" | "indexnow" | "bing" | "discovery";
 
 export type SubmissionResultDto = {
   id: string;
