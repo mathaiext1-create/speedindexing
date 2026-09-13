@@ -26,7 +26,19 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { summary } = await runSubmission(body.urls, engines, user.id, "manual");
+    const origin =
+      req.headers.get("x-forwarded-host") || req.headers.get("host")
+        ? `${req.headers.get("x-forwarded-proto") || "https"}://${
+            req.headers.get("x-forwarded-host") || req.headers.get("host")
+          }`
+        : null;
+    const { summary } = await runSubmission(
+      body.urls,
+      engines,
+      user.id,
+      "manual",
+      origin
+    );
     return NextResponse.json({ summary });
   } catch (e) {
     return NextResponse.json(

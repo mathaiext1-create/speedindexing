@@ -7,6 +7,7 @@ import {
 import { submitToIndexNow } from "@/lib/engines/indexnow";
 import { submitToBing } from "@/lib/engines/bing";
 import { runDiscovery } from "@/lib/engines/discovery";
+import { publishToHub, isHubEnabled } from "@/lib/hub";
 
 export const MAX_URLS_PER_BATCH = 500;
 
@@ -25,6 +26,10 @@ export type SubmitSummary = {
   boosted: number;
   /** Hosts that need a one-time Owner add to unlock the instant lane */
   boostedHosts: string[];
+  /** Public Discovery Hub URL when URLs were published to it */
+  hubUrl?: string;
+  /** How the hub pages were pushed to Google */
+  hubPush?: string;
 };
 
 /** Parse raw textarea input into validated, deduped URLs. */
@@ -96,7 +101,8 @@ export async function runSubmission(
   raw: string,
   engines: EngineFlags,
   userId: string,
-  source: "manual" | "sitemap" | "retry" = "manual"
+  source: "manual" | "sitemap" | "retry" = "manual",
+  origin: string | null = null
 ): Promise<{ summary: SubmitSummary; submissionIds: string[] }> {
   const { urls, duplicatesRemoved, errors } = parseUrls(raw);
   if (urls.length === 0) {
@@ -326,6 +332,34 @@ export async function runSubmission(
       });
       summary.engines.discovery[res.status]++;
     });
+
+    // --- Discovery Hub: publish every boosted URL on our own crawlable
+    // domain (list page + per-URL page + sitemap + RSS), then push the hub
+    // page via the Indexing API when the hub domain is instant-laned. This
+    // is the mechanism competitor "no-setup" indexers rely on.
+    if (isHubEnabled()) {
+      const hubResults = await mapPool(discoveryIdx, 4, (idx) =>
+        publishToHub(submissions[idx].id, urls[idx], userId, origin)
+      );
+      const firstHub = hubResults.find((h) => h.hubPageUrl);
+      if (firstHub?.hubPageUrl) {
+        summary.hubUrl = `${origin?.replace(/\/$/, "")}/hub`;
+        summary.hubPush = firstHub.googlePush;
+        // Record the hub publish on each affected submission for transparency
+        await db.submissionResult
+          .createMany({
+            data: hubResults
+              .map((h, i) => ({
+                submissionId: submissions[discoveryIdx[i]].id,
+                engine: "discovery",
+                status: "success" as const,
+                message: h.note,
+              }))
+              .filter((r) => r.message),
+          })
+          .catch(() => undefined);
+      }
+    }
   }
 
   if (resultRows.length > 0) {

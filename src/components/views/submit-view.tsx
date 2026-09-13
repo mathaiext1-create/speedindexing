@@ -461,6 +461,25 @@ export function SubmitView({
                       . Unlock the instant lane for a site with the one-time
                       Owner permission below.
                     </p>
+                    {summary.hubUrl && (
+                      <p className="mt-1.5 text-emerald-300/90">
+                        Also published to the{" "}
+                        <a
+                          href={summary.hubUrl}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="underline underline-offset-2 font-medium"
+                        >
+                          Discovery Hub
+                        </a>{" "}
+                        — a public crawl page on this tool's domain that
+                        search bots re-check constantly
+                        {summary.hubPush === "submitted"
+                          ? " (hub page pushed to Google instantly)"
+                          : ""}
+                        .
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

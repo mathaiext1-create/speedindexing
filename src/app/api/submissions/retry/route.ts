@@ -55,11 +55,18 @@ export async function POST(req: NextRequest) {
   });
 
   try {
+    const origin =
+      req.headers.get("x-forwarded-host") || req.headers.get("host")
+        ? `${req.headers.get("x-forwarded-proto") || "https"}://${
+            req.headers.get("x-forwarded-host") || req.headers.get("host")
+          }`
+        : null;
     const { summary } = await runSubmission(
       submission.url,
       engines,
       user.id,
-      "retry"
+      "retry",
+      origin
     );
     return NextResponse.json({ summary });
   } catch (e) {
