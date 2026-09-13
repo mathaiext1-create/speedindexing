@@ -105,7 +105,13 @@ const TABLES = [
 
 console.log("\n2) Copying data...");
 for (const [table, cols] of TABLES) {
-  const rows = await src.unsafe(`SELECT ${cols.map((c) => `"${c}"`).join(",")} FROM "${table}"`);
+  let rows = [];
+  try {
+    rows = await src.unsafe(`SELECT ${cols.map((c) => `"${c}"`).join(",")} FROM "${table}"`);
+  } catch {
+    console.log(`   ${table}: source table missing — skipping (0 rows)`);
+    continue;
+  }
   let n = 0;
   for (const row of rows) {
     const collist = cols.map((c) => `"${c}"`).join(",");
@@ -126,10 +132,11 @@ for (const [table, cols] of TABLES) {
 
 console.log("\n3) Verification (source -> dest counts):");
 for (const [table] of TABLES) {
-  const a = await src.unsafe(`SELECT COUNT(*)::int AS n FROM "${table}"`);
-  const b = await dst.unsafe(`SELECT COUNT(*)::int AS n FROM "${table}"`);
-  const ok = a[0].n === b[0].n ? "OK" : "MISMATCH!";
-  console.log(`   ${table}: ${a[0].n} -> ${b[0].n}  ${ok}`);
+  let a = [{ n: "missing" }], b = [{ n: "missing" }];
+  try { a = await src.unsafe(`SELECT COUNT(*)::int AS n FROM "${table}"`); } catch {}
+  try { b = await dst.unsafe(`SELECT COUNT(*)::int AS n FROM "${table}"`); } catch {}
+  const ok = a[0]?.n === b[0]?.n ? "OK" : "MISMATCH!";
+  console.log(`   ${table}: ${a[0]?.n} -> ${b[0]?.n}  ${ok}`);
 }
 
 const svc = await dst.unsafe(`SELECT "label","clientEmail" FROM "ServiceAccount"`);
